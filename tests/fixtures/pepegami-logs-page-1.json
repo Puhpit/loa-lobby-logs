@@ -1,0 +1,23 @@
+[
+  {
+    "id": "first-page-armoche",
+    "name": "Pepegami",
+    "boss": "Armoche, Sentinel of the Abyss",
+    "difficulty": "Hard",
+    "dps": 4321000,
+    "udps": 4210000,
+    "ndps": 4010000,
+    "rdps": 3900000,
+    "buffs": [1, 2],
+    "class": "Sorceress",
+    "spec": "Igniter",
+    "gearScore": 1765,
+    "combatPower": 123456,
+    "percentile": 0.91,
+    "overallPercentile": 0.93,
+    "duration": 512,
+    "timestamp": 1760000000,
+    "isBus": false,
+    "isDead": false
+  }
+]

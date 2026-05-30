@@ -5,9 +5,12 @@ export function summarizeCharacter(
   logs: LogEntry[],
   currentBosses: string[]
 ): CharacterSummary {
-  const currentEncounterLogs = logs.filter((log) => currentBosses.includes(log.boss));
+  const currentEncounterLogs = [...logs.filter((log) => currentBosses.includes(log.boss))]
+    .sort(compareDisplayPriority);
   const currentIds = new Set(currentEncounterLogs.map((log) => log.id));
-  const recentOtherLogs = logs.filter((log) => !currentIds.has(log.id)).slice(0, 5);
+  const recentOtherLogs = [...logs.filter((log) => !currentIds.has(log.id))]
+    .sort((left, right) => right.timestamp - left.timestamp)
+    .slice(0, 5);
   const primaryLogs = currentEncounterLogs.length > 0 ? currentEncounterLogs : logs;
 
   const latest = logs.reduce<LogEntry | undefined>(
@@ -49,4 +52,19 @@ function medianNullable(values: Array<number | null | undefined>): number | null
 
   const middle = Math.floor(numbers.length / 2);
   return numbers.length % 2 === 0 ? (numbers[middle - 1] + numbers[middle]) / 2 : numbers[middle];
+}
+
+function compareDisplayPriority(left: LogEntry, right: LogEntry): number {
+  return (
+    compareNullableDescending(left.percentile, right.percentile) ||
+    right.dps - left.dps ||
+    right.ndps - left.ndps ||
+    right.timestamp - left.timestamp
+  );
+}
+
+function compareNullableDescending(left: number | null | undefined, right: number | null | undefined): number {
+  const leftValue = typeof left === "number" && !Number.isNaN(left) ? left : Number.NEGATIVE_INFINITY;
+  const rightValue = typeof right === "number" && !Number.isNaN(right) ? right : Number.NEGATIVE_INFINITY;
+  return rightValue - leftValue;
 }

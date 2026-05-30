@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+  <head><title>Pepegami logs fixture</title></head>
+  <body>
+    <script>
+      {
+        const app = { start: (opts) => opts };
+        const kit = app;
+        kit.start({
+          target: document.body,
+          paths: { base: "", assets: "" },
+          route: true,
+          spa: false,
+          trailing_slash: "never",
+          hydrate: {
+            status: 200,
+            error: null,
+            node_ids: [0, 8, 32],
+            params: { region: "NA", name: "Pepegami" },
+            route: { id: "/character/[region]/[name]/logs" },
+            data: [
+              null,
+              {
+                type: "data",
+                data: {
+                  header: {
+                    id: 22864512,
+                    sn: "200000000063884",
+                    rid: 219368,
+                    ilvl: 1765,
+                    class: "elemental_master",
+                    world: "Brelshaza",
+                    guild: { id: 1, name: "Sanitized" }
+                  },
+                  logsEnabled: true,
+                  isPublic: true,
+                  logs: [
+                    {
+                      id: "first-page-armoche",
+                      name: "Pepegami",
+                      boss: "Armoche, Sentinel of the Abyss",
+                      difficulty: "Hard",
+                      dps: 4321000,
+                      udps: 4210000,
+                      ndps: 4010000,
+                      rdps: 3900000,
+                      buffs: [1, 2],
+                      class: "Sorceress",
+                      spec: "Igniter",
+                      gearScore: 1765,
+                      combatPower: 123456,
+                      percentile: .91,
+                      overallPercentile: .93,
+                      duration: 512,
+                      timestamp: 1760000000,
+                      isBus: false,
+                      isDead: false
+                    }
+                  ]
+                },
+                uses: { params: ["region", "name"] }
+              }
+            ],
+            form: null
+          }
+        });
+      }
+    </script>
+  </body>
+</html>
