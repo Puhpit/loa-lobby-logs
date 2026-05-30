@@ -3,6 +3,7 @@ dist/
 out/
 .vite/
 .cache/
+.tools/
 *.har
 *.log
 *.sqlite
