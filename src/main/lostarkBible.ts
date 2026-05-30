@@ -68,14 +68,7 @@ export class LostArkBibleProvider {
     const response = await this.fetchImpl(`${BASE_URL}/api/character/logs`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        region,
-        characterSerial: header.serial,
-        className: header.className,
-        cid: header.id,
-        rid: header.rosterId,
-        page
-      })
+      body: JSON.stringify(buildLogsRequestBody(region, header, page))
     });
 
     if (!response.ok) {
@@ -100,35 +93,179 @@ export class LostArkBibleProvider {
 }
 
 export function extractPageData(html: string): RawPageData {
-  const headerMatch = html.match(/header:\{(?<body>.*?guild:\{.*?\}\})/s);
-  const logsMatch = html.match(/logs:\[(?<logs>.*?)(?=\],uses:\{|\],\w+:)/s);
-
-  const header = headerMatch?.groups?.body ? parseHeaderObject(headerMatch.groups.body) : undefined;
-  const logs = logsMatch?.groups?.logs ? parseEmbeddedLogs(logsMatch.groups.logs) : [];
+  const bootData = extractSvelteKitDataArray(html) ?? html;
+  const headerLiteral = extractLiteralAfterKey(bootData, "header");
+  const logsLiteral = extractLiteralAfterKey(bootData, "logs");
 
   return {
-    header,
-    logsEnabled: html.includes("logsEnabled:true"),
-    isPublic: html.includes("isPublic:true"),
-    logs
+    header: headerLiteral ? parseHeaderObject(headerLiteral) : undefined,
+    logsEnabled: parseBooleanProperty(bootData, "logsEnabled"),
+    isPublic: parseBooleanProperty(bootData, "isPublic"),
+    logs: logsLiteral ? parseEmbeddedLogs(logsLiteral) : []
   };
 }
 
-function parseHeaderObject(body: string): RawHeader {
-  const id = Number(requiredMatch(body, /id:(\d+)/, "header.id"));
-  const sn = requiredMatch(body, /sn:"([^"]+)"/, "header.sn");
-  const rid = Number(requiredMatch(body, /rid:(\d+)/, "header.rid"));
-  const classKey = requiredMatch(body, /class:"([^"]+)"/, "header.class");
-  const ilvl = optionalNumber(body, /ilvl:(\d+(?:\.\d+)?)/);
-  const world = optionalString(body, /world:"([^"]+)"/);
+export function buildLogsRequestBody(region: Region, header: CharacterHeader, page: number): Record<string, unknown> {
+  return {
+    region,
+    characterSerial: header.serial,
+    className: header.className,
+    cid: header.id,
+    rid: header.rosterId,
+    page
+  };
+}
+
+function extractSvelteKitDataArray(html: string): string | undefined {
+  const startToken = "kit.start(";
+  let searchFrom = 0;
+
+  while (searchFrom < html.length) {
+    const kitStart = html.indexOf(startToken, searchFrom);
+    if (kitStart === -1) return undefined;
+
+    const callStart = html.indexOf("(", kitStart);
+    const callLiteral = extractBalancedLiteral(html, callStart);
+    if (!callLiteral) {
+      searchFrom = kitStart + startToken.length;
+      continue;
+    }
+
+    const dataLiteral = extractLiteralAfterKey(callLiteral, "data");
+    if (dataLiteral?.startsWith("[")) return dataLiteral;
+
+    searchFrom = kitStart + callLiteral.length;
+  }
+
+  return undefined;
+}
+
+function extractLiteralAfterKey(input: string, key: string): string | undefined {
+  const propertyIndex = findPropertyIndex(input, key);
+  if (propertyIndex === -1) return undefined;
+
+  const colonIndex = input.indexOf(":", propertyIndex + key.length);
+  if (colonIndex === -1) return undefined;
+
+  const valueStart = findNextNonWhitespace(input, colonIndex + 1);
+  if (valueStart === -1) return undefined;
+
+  const first = input[valueStart];
+  if (first === "{" || first === "[" || first === "(") return extractBalancedLiteral(input, valueStart);
+  if (first === '"' || first === "'" || first === "`") return extractQuotedLiteral(input, valueStart);
+
+  const primitiveEnd = findPrimitiveEnd(input, valueStart);
+  return input.slice(valueStart, primitiveEnd).trim();
+}
+
+function findPropertyIndex(input: string, key: string): number {
+  for (let index = 0; index < input.length; index++) {
+    const char = input[index];
+
+    if (char === '"' || char === "'" || char === "`") {
+      index = skipQuoted(input, index);
+      continue;
+    }
+
+    if (!startsWithProperty(input, index, key)) continue;
+
+    const afterKey = findNextNonWhitespace(input, index + key.length);
+    if (afterKey !== -1 && input[afterKey] === ":") return index;
+  }
+
+  return -1;
+}
+
+function startsWithProperty(input: string, index: number, key: string): boolean {
+  if (!input.startsWith(key, index)) return false;
+
+  const before = input[index - 1];
+  const after = input[index + key.length];
+  const isIdentifier = (value: string | undefined): boolean => Boolean(value?.match(/[A-Za-z0-9_$]/));
+
+  return !isIdentifier(before) && !isIdentifier(after);
+}
+
+function extractBalancedLiteral(input: string, start: number): string | undefined {
+  const open = input[start];
+  const close = open === "{" ? "}" : open === "[" ? "]" : open === "(" ? ")" : undefined;
+  if (!close) return undefined;
+
+  let depth = 0;
+  for (let index = start; index < input.length; index++) {
+    const char = input[index];
+
+    if (char === '"' || char === "'" || char === "`") {
+      index = skipQuoted(input, index);
+      continue;
+    }
+
+    if (char === open) depth += 1;
+    if (char === close) depth -= 1;
+    if (depth === 0) return input.slice(start, index + 1);
+  }
+
+  return undefined;
+}
+
+function extractQuotedLiteral(input: string, start: number): string | undefined {
+  const end = skipQuoted(input, start);
+  return end < input.length ? input.slice(start, end + 1) : undefined;
+}
+
+function skipQuoted(input: string, start: number): number {
+  const quote = input[start];
+  for (let index = start + 1; index < input.length; index++) {
+    const char = input[index];
+    if (char === "\\") {
+      index += 1;
+      continue;
+    }
+    if (char === quote) return index;
+  }
+
+  return input.length;
+}
+
+function findNextNonWhitespace(input: string, start: number): number {
+  for (let index = start; index < input.length; index++) {
+    if (!input[index].match(/\s/)) return index;
+  }
+
+  return -1;
+}
+
+function findPrimitiveEnd(input: string, start: number): number {
+  for (let index = start; index < input.length; index++) {
+    if ([",", "}", "]", ")"].includes(input[index])) return index;
+  }
+
+  return input.length;
+}
+
+function parseBooleanProperty(input: string, key: string): boolean | undefined {
+  const literal = extractLiteralAfterKey(input, key);
+  if (literal === "true") return true;
+  if (literal === "false") return false;
+  return undefined;
+}
+
+function parseHeaderObject(literal: string): RawHeader {
+  const id = Number(requiredMatch(literal, /\bid\s*:\s*(\d+)/, "header.id"));
+  const sn = requiredMatch(literal, /\bsn\s*:\s*"([^"]+)"/, "header.sn");
+  const rid = Number(requiredMatch(literal, /\brid\s*:\s*(\d+)/, "header.rid"));
+  const classKey = requiredMatch(literal, /\bclass\s*:\s*"([^"]+)"/, "header.class");
+  const ilvl = optionalNumber(literal, /\bilvl\s*:\s*(\d+(?:\.\d+)?)/);
+  const world = optionalString(literal, /\bworld\s*:\s*"([^"]+)"/);
 
   return { id, sn, rid, ilvl, class: classKey, world };
 }
 
-function parseEmbeddedLogs(logsBody: string): unknown[] {
-  const jsonish = `[${logsBody}]`
-    .replace(/([{,])(\w+):/g, '$1"$2":')
-    .replace(/:\.([0-9]+)/g, ":0.$1");
+function parseEmbeddedLogs(logsLiteral: string): unknown[] {
+  const jsonish = logsLiteral
+    .replace(/([{,])\s*([A-Za-z_$][\w$]*)\s*:/g, '$1"$2":')
+    .replace(/:\s*\.([0-9]+)/g, ":0.$1")
+    .replace(/:\s*undefined\b/g, ":null");
 
   try {
     return JSON.parse(jsonish) as unknown[];
