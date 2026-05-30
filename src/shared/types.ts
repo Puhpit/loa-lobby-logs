@@ -61,6 +61,11 @@ export interface CharacterLogsResult {
   logs: LogEntry[];
 }
 
+export interface CharacterLogsQueryOptions {
+  pages?: number;
+  bosses?: string[];
+}
+
 export interface CharacterSummary {
   name: string;
   className?: string;
@@ -91,5 +96,9 @@ export interface CharacterSource {
 }
 
 export interface LogProvider {
-  getCharacterLogs(region: Region, name: string): Promise<CharacterLogsResult>;
+  getCharacterLogs(
+    region: Region,
+    name: string,
+    options?: CharacterLogsQueryOptions
+  ): Promise<CharacterLogsResult>;
 }

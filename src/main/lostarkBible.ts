@@ -1,5 +1,11 @@
 import { lostArkBibleClassNames } from "./classMap.js";
-import type { CharacterHeader, CharacterLogsResult, LogEntry, Region } from "../shared/types.js";
+import type {
+  CharacterHeader,
+  CharacterLogsQueryOptions,
+  CharacterLogsResult,
+  LogEntry,
+  Region
+} from "../shared/types.js";
 
 const BASE_URL = "https://lostark.bible";
 
@@ -22,7 +28,12 @@ interface RawPageData {
 export class LostArkBibleProvider {
   constructor(private readonly fetchImpl: typeof fetch = fetch) {}
 
-  async getCharacterLogs(region: Region, name: string, pages = 3): Promise<CharacterLogsResult> {
+  async getCharacterLogs(
+    region: Region,
+    name: string,
+    options: number | CharacterLogsQueryOptions = {}
+  ): Promise<CharacterLogsResult> {
+    const { pages, bosses } = normalizeQueryOptions(options);
     const html = await this.fetchText(`${BASE_URL}/character/${region}/${encodeURIComponent(name)}/logs`);
     const pageData = extractPageData(html);
     const header = pageData.header ? normalizeHeader(pageData.header) : undefined;
@@ -39,11 +50,12 @@ export class LostArkBibleProvider {
       };
     }
 
-    const logs = [...firstPageLogs];
+    const logs = bosses.length > 0 ? [] : [...firstPageLogs];
     const seen = new Set(logs.map((log) => log.id));
+    const startPage = bosses.length > 0 ? 1 : 2;
 
-    for (let page = 2; page <= pages; page++) {
-      const pageLogs = await this.fetchLogPage(region, header, page);
+    for (let page = startPage; page <= pages; page++) {
+      const pageLogs = await this.fetchLogPage(region, header, page, bosses);
       if (pageLogs.length === 0) break;
 
       for (const log of pageLogs) {
@@ -64,11 +76,16 @@ export class LostArkBibleProvider {
     };
   }
 
-  private async fetchLogPage(region: Region, header: CharacterHeader, page: number): Promise<LogEntry[]> {
+  private async fetchLogPage(
+    region: Region,
+    header: CharacterHeader,
+    page: number,
+    bosses: string[]
+  ): Promise<LogEntry[]> {
     const response = await this.fetchImpl(`${BASE_URL}/api/character/logs`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(buildLogsRequestBody(region, header, page))
+      body: JSON.stringify(buildLogsRequestBody(region, header, page, bosses))
     });
 
     if (!response.ok) {
@@ -105,14 +122,31 @@ export function extractPageData(html: string): RawPageData {
   };
 }
 
-export function buildLogsRequestBody(region: Region, header: CharacterHeader, page: number): Record<string, unknown> {
+export function buildLogsRequestBody(
+  region: Region,
+  header: CharacterHeader,
+  page: number,
+  bosses: string[] = []
+): Record<string, unknown> {
   return {
     region,
     characterSerial: header.serial,
     className: header.className,
     cid: header.id,
     rid: header.rosterId,
+    ...(bosses.length > 0 ? { bosses } : {}),
     page
+  };
+}
+
+function normalizeQueryOptions(options: number | CharacterLogsQueryOptions): Required<CharacterLogsQueryOptions> {
+  if (typeof options === "number") {
+    return { pages: options, bosses: [] };
+  }
+
+  return {
+    pages: options.pages ?? 3,
+    bosses: options.bosses ?? []
   };
 }
 

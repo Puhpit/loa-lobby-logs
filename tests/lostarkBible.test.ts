@@ -61,6 +61,35 @@ describe("LostArkBibleProvider page extraction", () => {
     ]);
   });
 
+  it("fetches filtered boss pages when bosses are provided", async () => {
+    const bodies: unknown[] = [];
+    const fetchMock = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      if (String(input).endsWith("/api/character/logs")) {
+        bodies.push(JSON.parse(String(init?.body)) as unknown);
+        return Response.json([]);
+      }
+
+      return new Response(await readFixture(fixtureUrl), { status: 200 });
+    };
+
+    await new LostArkBibleProvider(fetchMock as typeof fetch).getCharacterLogs("NA", "Pepegami", {
+      pages: 1,
+      bosses: ["Armoche, Sentinel of the Abyss"]
+    });
+
+    expect(bodies).toEqual([
+      {
+        region: "NA",
+        characterSerial: "200000000063884",
+        className: "Sorceress",
+        cid: 22864512,
+        rid: 219368,
+        bosses: ["Armoche, Sentinel of the Abyss"],
+        page: 1
+      }
+    ]);
+  });
+
   it("extracts embedded page-one logs", async () => {
     const pageData = extractPageData(await readFixture(fixtureUrl));
     const expectedLogs = JSON.parse(await readFixture(logsFixtureUrl)) as unknown[];
