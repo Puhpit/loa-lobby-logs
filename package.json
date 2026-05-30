@@ -1,0 +1,20 @@
+{
+  "name": "loa-lobby-logs",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Personal Lost Ark lobby log overlay.",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.8.0",
+    "vitest": "^3.0.0"
+  },
+  "dependencies": {
+    "electron": "^35.0.0",
+    "better-sqlite3": "^11.0.0"
+  }
+}

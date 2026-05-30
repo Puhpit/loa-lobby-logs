@@ -1,0 +1,10 @@
+node_modules/
+dist/
+out/
+.vite/
+.cache/
+*.har
+*.log
+*.sqlite
+*.sqlite-*
+fixtures/private/
