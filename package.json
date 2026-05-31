@@ -4,17 +4,37 @@
   "private": true,
   "description": "Personal Lost Ark lobby log overlay.",
   "type": "module",
+  "main": "dist/src/main/electron.js",
   "scripts": {
+    "build": "tsc && node scripts/copy-renderer-assets.mjs",
+    "start": "tsc && node scripts/copy-renderer-assets.mjs && electron .",
+    "package:win": "tsc && node scripts/copy-renderer-assets.mjs && electron-builder --win portable",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
+  "build": {
+    "appId": "com.puhpit.loa-lobby-logs",
+    "productName": "LOA Lobby Logs",
+    "files": [
+      "dist/src/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        "portable"
+      ],
+      "signAndEditExecutable": false,
+      "artifactName": "LOA-Lobby-Logs-${version}-portable.exe"
+    }
+  },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "electron": "^35.0.0",
+    "electron-builder": "^26.0.0",
     "typescript": "^5.8.0",
     "vitest": "^3.0.0"
   },
   "dependencies": {
-    "electron": "^35.0.0",
-    "better-sqlite3": "^11.0.0"
+    "tesseract.js": "^6.0.0"
   }
 }

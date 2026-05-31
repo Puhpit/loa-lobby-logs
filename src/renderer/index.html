@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>LOA Lobby Logs</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="toolbar">
+        <div>
+          <h1>LOA Lobby Logs</h1>
+          <p id="status">Ready</p>
+        </div>
+        <label class="toggle">
+          <input id="alwaysOnTop" type="checkbox" checked />
+          <span>Top</span>
+        </label>
+      </section>
+
+      <section class="controls">
+        <label>
+          Region
+          <select id="region">
+            <option value="NA">NA</option>
+            <option value="NAE">NAE</option>
+            <option value="NAW">NAW</option>
+            <option value="CE">CE</option>
+          </select>
+        </label>
+        <label>
+          Encounter
+          <input id="encounter" value="[Normal]Dark Baratron" />
+        </label>
+        <label>
+          Pages
+          <input id="pages" type="number" min="1" max="10" value="3" />
+        </label>
+      </section>
+
+      <section class="controls stacked">
+        <label>
+          Character names
+          <textarea id="manualNames" spellcheck="false" placeholder="One name per line">Badseedrestart</textarea>
+        </label>
+        <div class="screenshot-row">
+          <button id="chooseScreenshot">Choose Screenshot</button>
+          <label class="toggle">
+            <input id="useOcr" type="checkbox" />
+            <span>OCR</span>
+          </label>
+          <span id="screenshotPath"></span>
+        </div>
+        <button id="reviewLobby" class="primary">Review Lobby</button>
+      </section>
+
+      <section class="summary-strip">
+        <div>
+          <span>Encounter</span>
+          <strong id="encounterSummary">Unknown</strong>
+        </div>
+        <div>
+          <span>Detected</span>
+          <strong id="candidateCount">0</strong>
+        </div>
+        <div>
+          <span>Updated</span>
+          <strong id="updatedAt">Never</strong>
+        </div>
+      </section>
+
+      <section id="results" class="results"></section>
+    </main>
+    <script type="module" src="./renderer.js"></script>
+  </body>
+</html>
