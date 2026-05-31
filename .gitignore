@@ -4,12 +4,11 @@ out/
 .vite/
 .cache/
 .tools/
+/local/
 *.har
-applicant-*.png
 *.log
 *.traineddata
 *.sqlite
 *.sqlite-*
 fixtures/private/
-LOCAL_DEV_NOTES.md
 CONTEXT.md

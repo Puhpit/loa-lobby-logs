@@ -1,12 +1,12 @@
 # OCR Targets
 
-Known UI fixtures are 3840x1080 Lost Ark screenshots in English.
+Known UI fixtures are 3840x1080 Lost Ark screenshots in English. Local screenshot fixtures live under ignored `local/`.
 
 ## Modes
 
 ### Applicant List
 
-Fixture: `applicant-1.png`
+Fixture: `local/applicant-1.png`
 
 Visible state:
 

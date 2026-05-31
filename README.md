@@ -1,56 +1,37 @@
 # LOA Lobby Logs
 
-Personal Windows overlay for Lost Ark lobby/applicant screening.
+LOA Lobby Logs is a personal Windows overlay for Lost Ark lobby and applicant screening.
 
-The app will:
+It captures the visible Lost Ark lobby/applicant UI, extracts character names with OCR, fetches public lostark.bible log data, and shows a compact overlay ranked by percentile, DPS, and nDPS.
 
-- read visible lobby/applicant character names from Lost Ark screenshots;
-- fetch public lostark.bible logs for each detected character;
-- prioritize the current encounter's logs;
-- show percentile first, DPS second, and nDPS third in a compact overlay.
+## Usage
 
-## Current Status
+1. Install dependencies with `npm install`.
+2. Start the app with `npm start`, or run the packaged portable executable.
+3. Open settings from the tray icon.
+4. With Lost Ark focused, press `Ctrl+Alt+D` to scan the visible lobby/applicant area.
+5. Review the right-side overlay. Use the overlay close button to dismiss it.
+6. Use the settings window for manual review/test scans when OCR is not the focus.
 
-Checkpoint 1 set up the project and source-of-truth notes:
+## Architecture
 
-- `docs/lostark-bible-api.md` captures the HAR findings.
-- `docs/ocr-targets.md` captures the known Lost Ark UI modes.
-- `src/shared/types.ts` defines the initial app contracts.
-- `src/main/lostarkBible.ts` sketches the provider that parses character page HTML and posts to `/api/character/logs`.
+The app is an Electron + TypeScript desktop app with a main process, preload bridge, and shared renderer bundle.
 
-Checkpoint 2 hardened the lostark.bible parser with fixture-backed tests and CI.
+Main process:
 
-Checkpoint 3 adds encounter-aware lobby summaries:
+- `src/main/electron.ts` owns app startup, tray menu, settings and overlay windows, global hotkey registration, display capture, IPC handlers, diagnostics, and scan orchestration.
+- `src/main/appPipeline.ts` combines OCR/manual candidates, encounter text, lostark.bible fetching, cache/rate-limit behavior, and lobby summaries.
+- Settings, diagnostics, and cached summaries are stored under Electron `userData`.
 
-- visible Lost Ark encounter text is resolved to known lostark.bible boss groups;
-- character names are deduped before lookup;
-- fetched logs are summarized with current-encounter priority and per-character scrape failures.
+Preload and renderer:
 
-Checkpoint 4 stabilizes the local Electron renderer flow:
+- `src/main/preload.cts` compiles to `dist/src/main/preload.cjs`. Electron windows load this CommonJS preload so `window.loaLobbyLogs` is exposed reliably.
+- `src/renderer/renderer.ts` is one renderer bundle with `?view=settings` and `?view=overlay` modes.
+- Renderer boot installs error handlers first, verifies preload availability, logs boot/click/render diagnostics, and shows a visible fatal message if the preload bridge is missing.
 
-- settings and overlay windows load a CommonJS preload bridge from `src/main/preload.cts`;
-- the renderer exposes diagnostics for boot, overlay rendering, and button clicks;
-- missing preload state renders a visible fatal message instead of silently failing;
-- local renderer tests cover overlay dismiss, manual scan/settings buttons, and result rendering.
+Data flow:
 
-## Development
-
-Use Node 24 for local development and CI.
-
-Common checks:
-
-- `npm test`
-- `npm run typecheck`
-- `npm run build`
-- `npm run package:win`
-
-On Windows, if npm script shims are blocked by local execution policy, the same checks can be run through the local Node executable by invoking the underlying package entrypoints directly.
-
-## Local Fixtures
-
-The current workspace contains:
-
-- `applicant-1.png`: full-resolution applicant-list fixture.
-- `lostark.bible.har`: captured lostark.bible character-log traffic.
-
-These are local fixtures for development. Avoid committing HAR files with cookies or session headers.
+- The scan hotkey captures the display containing Lost Ark.
+- OCR reads calibrated lobby/applicant/member regions into character candidates.
+- The pipeline deduplicates candidates, resolves visible encounter text, fetches public lostark.bible logs, and builds overlay-ready summaries.
+- The overlay renders rows from the latest scan result and can fall back to the last result when it initializes.
