@@ -1,7 +1,7 @@
 import type { CharacterCandidate, CharacterSource, OcrSourceMode, Rect } from "../shared/types.js";
 import { cropRectForMode, type CalibrationConfig } from "./calibration.js";
 import type { DiagnosticsLogger } from "./diagnostics.js";
-import { dedupeCharacterCandidates, normalizeOcrName } from "./nameNormalization.js";
+import { dedupeCharacterCandidates, normalizeOcrNames } from "./nameNormalization.js";
 
 interface TesseractResult {
   data: {
@@ -92,13 +92,13 @@ export function candidatesFromOcrText(
     .filter(Boolean);
 
   return dedupeCharacterCandidates(
-    lines.map((line) => ({
+    lines.flatMap((line) => normalizeOcrNames(line).map((normalizedName) => ({
       rawText: line,
-      normalizedName: normalizeOcrName(line),
+      normalizedName,
       confidence: Math.max(0, Math.min(1, confidence / 100)),
       sourceMode,
       cropRect
-    }))
+    })))
   );
 }
 

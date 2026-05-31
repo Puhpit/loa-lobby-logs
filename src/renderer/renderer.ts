@@ -28,6 +28,7 @@ window.addEventListener("unhandledrejection", (event) => {
 function initSettings(): void {
   const statusEl = byId("status");
   const resultsEl = byId("settingsResults");
+  const scanButton = byId<HTMLButtonElement>("scanNow");
   const reviewButton = byId<HTMLButtonElement>("reviewLobby");
   const screenshotPathEl = byId("screenshotPath");
   const candidateCountEl = byId("candidateCount");
@@ -46,6 +47,7 @@ function initSettings(): void {
   });
 
   byId<HTMLButtonElement>("saveSettings").addEventListener("click", async () => {
+    void reportClick("settings.save");
     const settings = await window.loaLobbyLogs.saveSettings({
       server: byId<HTMLSelectElement>("server").value as Region,
       scanHotkey: byId<HTMLInputElement>("scanHotkey").value,
@@ -55,24 +57,28 @@ function initSettings(): void {
     settingsMessageEl.textContent = `Saved ${settings.server} / ${settings.scanHotkey}`;
   });
 
-  byId<HTMLButtonElement>("scanNow").addEventListener("click", async () => {
-    setBusy(reviewButton, true, statusEl, "Scanning...");
+  scanButton.addEventListener("click", async () => {
+    void reportClick("settings.scanNow");
+    setBusy(scanButton, true, statusEl, "Scanning...");
     try {
       const output = await window.loaLobbyLogs.startScan();
       renderSummary(output, encounterSummaryEl, candidateCountEl, updatedAtEl);
       renderRows(output.summaries, resultsEl);
-      setBusy(reviewButton, false, statusEl, `Loaded ${output.summaries.length} character${output.summaries.length === 1 ? "" : "s"}`);
+      setBusy(scanButton, false, statusEl, `Loaded ${output.summaries.length} character${output.summaries.length === 1 ? "" : "s"}`);
     } catch (error) {
-      setBusy(reviewButton, false, statusEl, errorMessage(error));
+      setBusy(scanButton, false, statusEl, errorMessage(error));
+      void window.loaLobbyLogs.reportRendererError("settings.scanNow.failed", { message: errorMessage(error) });
     }
   });
 
   byId<HTMLButtonElement>("showLastResults").addEventListener("click", async () => {
+    void reportClick("settings.showLastResults");
     const shown = await window.loaLobbyLogs.showLastResults();
     settingsMessageEl.textContent = shown ? "Showing last results" : "No scan results yet";
   });
 
   byId<HTMLButtonElement>("openLogs").addEventListener("click", async () => {
+    void reportClick("settings.openLogs");
     try {
       const path = await window.loaLobbyLogs.openLogs();
       settingsMessageEl.textContent = `Opened logs: ${path}`;
@@ -82,11 +88,13 @@ function initSettings(): void {
   });
 
   byId<HTMLButtonElement>("chooseScreenshot").addEventListener("click", async () => {
+    void reportClick("settings.chooseScreenshot");
     screenshotPath = await window.loaLobbyLogs.chooseScreenshot();
     screenshotPathEl.textContent = screenshotPath ?? "";
   });
 
   reviewButton.addEventListener("click", async () => {
+    void reportClick("settings.reviewLobby");
     setBusy(reviewButton, true, statusEl, "Reviewing lobby...");
     resultsEl.innerHTML = "";
 
@@ -105,6 +113,7 @@ function initSettings(): void {
       setBusy(reviewButton, false, statusEl, `Loaded ${output.summaries.length} character${output.summaries.length === 1 ? "" : "s"}`);
     } catch (error) {
       setBusy(reviewButton, false, statusEl, errorMessage(error));
+      void window.loaLobbyLogs.reportRendererError("settings.reviewLobby.failed", { message: errorMessage(error) });
       resultsEl.innerHTML = `<div class="empty">Review failed</div>`;
     }
   });
@@ -233,6 +242,10 @@ function setBusy(button: HTMLButtonElement, busy: boolean, statusEl: HTMLElement
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function reportClick(action: string): Promise<void> {
+  return window.loaLobbyLogs.reportRendererEvent("button.click", { action });
 }
 
 function byId<T extends HTMLElement = HTMLElement>(id: string): T {

@@ -9,6 +9,7 @@ describe("normalizeOcrName", () => {
   it("extracts a Lost Ark style character name from noisy OCR text", () => {
     expect(normalizeOcrName("Lv. 70 Badseedrestart")).toBe("Badseedrestart");
     expect(normalizeOcrName("Brelshaza | Pepegami")).toBe("Pepegami");
+    expect(normalizeOcrName("Wr  Pepegami O Recr")).toBe("Pepegami");
   });
 
   it("rejects empty and punctuation-only text", () => {
@@ -38,6 +39,17 @@ describe("candidatesFromOcrText", () => {
     expect(candidates.map((candidate) => candidate.normalizedName)).toEqual(["Badseedrestart", "Pepegami"]);
     expect(candidates[0].confidence).toBe(0.82);
     expect(candidates[0].cropRect).toEqual(rect);
+  });
+
+  it("keeps character names from party rows and rejects recruiting text", () => {
+    const candidates = candidatesFromOcrText(
+      "Party 1 Party 2\nWr  Pepegami O Recr\nRecruiting O Recr\nami\nPepeg",
+      43,
+      "other-party-selected-lobby",
+      rect
+    );
+
+    expect(candidates.map((candidate) => candidate.normalizedName)).toEqual(["Pepegami"]);
   });
 });
 
