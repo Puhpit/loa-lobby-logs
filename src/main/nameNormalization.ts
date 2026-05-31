@@ -9,20 +9,27 @@ const OCR_STOP_WORDS = new Set([
   "dbslca",
   "details",
   "group",
+  "inanna",
   "iting",
   "lobby",
+  "luterra",
   "member",
+  "nineveh",
   "noma",
   "oaciting",
   "party",
   "rai",
   "raid",
+  "rec",
+  "recr",
   "recrui",
   "recruit",
   "recruiti",
   "recruiting",
   "settings",
   "selected",
+  "thaemine",
+  "vairgrys",
   "view"
 ]);
 
@@ -32,13 +39,18 @@ export function normalizeOcrName(rawText: string): string {
     .replace(/\s+/g, " ")
     .trim();
 
-  const candidates = compact
+  return normalizeOcrNames(compact).at(-1) ?? "";
+}
+
+export function normalizeOcrNames(rawText: string): string[] {
+  return rawText
+    .replace(/[|()[\]{}"'`]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
     .split(" ")
     .map((part) => part.replace(/[^A-Za-z0-9]/g, ""))
     .filter((part) => LOST_ARK_NAME_PATTERN.test(part))
     .filter((part) => !OCR_STOP_WORDS.has(part.toLowerCase()));
-
-  return candidates.at(-1) ?? "";
 }
 
 export function dedupeCharacterCandidates(candidates: CharacterCandidate[]): CharacterCandidate[] {
@@ -57,5 +69,15 @@ export function dedupeCharacterCandidates(candidates: CharacterCandidate[]): Cha
     }
   }
 
-  return [...bestByName.values()].sort((left, right) => right.confidence - left.confidence);
+  return dropPartialNames([...bestByName.values()].sort((left, right) => right.confidence - left.confidence));
+}
+
+function dropPartialNames(candidates: CharacterCandidate[]): CharacterCandidate[] {
+  return candidates.filter((candidate) => {
+    const name = candidate.normalizedName.toLowerCase();
+    return !candidates.some((other) => {
+      const otherName = other.normalizedName.toLowerCase();
+      return otherName !== name && otherName.startsWith(name) && otherName.length - name.length >= 2;
+    });
+  });
 }
