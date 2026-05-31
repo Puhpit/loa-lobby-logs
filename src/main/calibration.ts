@@ -12,10 +12,10 @@ export interface CalibrationConfig {
 
 export const defaultCalibration: CalibrationConfig = {
   version: 1,
-  encounterTitle: { x: 1420, y: 115, width: 300, height: 42 },
-  applicantList: { x: 1295, y: 205, width: 470, height: 80 },
-  memberList: { x: 1295, y: 205, width: 470, height: 430 },
-  selectedLobbyRow: { x: 535, y: 224, width: 725, height: 60 }
+  encounterTitle: { x: 2425, y: 205, width: 430, height: 44 },
+  applicantList: { x: 2200, y: 385, width: 560, height: 60 },
+  memberList: { x: 2185, y: 370, width: 640, height: 460 },
+  selectedLobbyRow: { x: 2190, y: 430, width: 360, height: 60 }
 };
 
 export function cropRectForMode(config: CalibrationConfig, mode: OcrSourceMode): Rect {

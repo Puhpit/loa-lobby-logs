@@ -36,8 +36,8 @@ export async function summarizeLobbyCharacters(options: LobbySummaryOptions): Pr
       try {
         const result = await fetchEncounterAwareLogs(options.logProvider, options.region, name, encounter, options.pages);
         return summarizeCharacter(name, result.logs, encounter.bosses);
-      } catch {
-        return withFlags(summarizeCharacter(name, [], encounter.bosses), ["scrape-failed"]);
+      } catch (error) {
+        return withFlags(summarizeCharacter(name, [], encounter.bosses), ["scrape-failed"], error);
       }
     })
   );
@@ -88,9 +88,10 @@ function uniqueNames(names: string[]): string[] {
   return result;
 }
 
-function withFlags(summary: CharacterSummary, flags: SummaryFlag[]): CharacterSummary {
+function withFlags(summary: CharacterSummary, flags: SummaryFlag[], error?: unknown): CharacterSummary {
   return {
     ...summary,
-    flags: [...new Set([...summary.flags, ...flags])]
+    flags: [...new Set([...summary.flags, ...flags])],
+    errorMessage: error instanceof Error ? error.message : error ? String(error) : undefined
   };
 }

@@ -25,6 +25,26 @@ interface RawPageData {
   logs?: unknown[];
 }
 
+export type LostArkBibleErrorCode =
+  | "not_found"
+  | "private_logs"
+  | "rate_limited"
+  | "session_required"
+  | "api_shape"
+  | "network"
+  | "http_error";
+
+export class LostArkBibleError extends Error {
+  constructor(
+    readonly code: LostArkBibleErrorCode,
+    message: string,
+    readonly status?: number
+  ) {
+    super(message);
+    this.name = "LostArkBibleError";
+  }
+}
+
 export class LostArkBibleProvider {
   constructor(private readonly fetchImpl: typeof fetch = fetch) {}
 
@@ -39,31 +59,31 @@ export class LostArkBibleProvider {
     const header = pageData.header ? normalizeHeader(pageData.header) : undefined;
     const firstPageLogs = (pageData.logs ?? []).map(normalizeLogEntry);
 
-    if (!header || !pageData.logsEnabled) {
-      return {
-        region,
-        name,
-        header,
-        logsEnabled: Boolean(pageData.logsEnabled),
-        isPublic: Boolean(pageData.isPublic),
-        logs: firstPageLogs
-      };
+    if (!header) {
+      throw new LostArkBibleError("not_found", `Character ${name} was not found on lostark.bible`);
+    }
+
+    if (!pageData.logsEnabled) {
+      throw new LostArkBibleError("private_logs", `Character ${name} does not have public lostark.bible logs`);
     }
 
     const logs = bosses.length > 0 ? [] : [...firstPageLogs];
     const seen = new Set(logs.map((log) => log.id));
-    const startPage = bosses.length > 0 ? 1 : 2;
+    const startPage = bosses.length > 0 || logs.length === 0 ? 1 : 2;
 
     for (let page = startPage; page <= pages; page++) {
       const pageLogs = await this.fetchLogPage(region, header, page, bosses);
       if (pageLogs.length === 0) break;
 
+      let added = 0;
       for (const log of pageLogs) {
         if (!seen.has(log.id)) {
           seen.add(log.id);
           logs.push(log);
+          added += 1;
         }
       }
+      if (added === 0) break;
     }
 
     return {
@@ -89,10 +109,13 @@ export class LostArkBibleProvider {
     });
 
     if (!response.ok) {
-      throw new Error(`lostark.bible logs request failed with ${response.status}`);
+      throw errorForStatus(response.status, "lostark.bible logs request failed");
     }
 
-    const data = (await response.json()) as unknown[];
+    const data = await response.json() as unknown;
+    if (!Array.isArray(data)) {
+      throw new LostArkBibleError("api_shape", "lostark.bible logs API returned an unexpected payload");
+    }
     return data.map(normalizeLogEntry);
   }
 
@@ -102,7 +125,7 @@ export class LostArkBibleProvider {
     });
 
     if (!response.ok) {
-      throw new Error(`lostark.bible page request failed with ${response.status}`);
+      throw errorForStatus(response.status, "lostark.bible page request failed");
     }
 
     return response.text();
@@ -112,7 +135,7 @@ export class LostArkBibleProvider {
 export function extractPageData(html: string): RawPageData {
   const bootData = extractSvelteKitDataArray(html) ?? html;
   const headerLiteral = extractLiteralAfterKey(bootData, "header");
-  const logsLiteral = extractLiteralAfterKey(bootData, "logs");
+  const logsLiteral = extractLogsLiteral(bootData);
 
   return {
     header: headerLiteral ? parseHeaderObject(headerLiteral) : undefined,
@@ -175,7 +198,7 @@ function extractSvelteKitDataArray(html: string): string | undefined {
 }
 
 function extractLiteralAfterKey(input: string, key: string): string | undefined {
-  const propertyIndex = findPropertyIndex(input, key);
+  const propertyIndex = findPropertyIndex(input, key, 0);
   if (propertyIndex === -1) return undefined;
 
   const colonIndex = input.indexOf(":", propertyIndex + key.length);
@@ -192,8 +215,8 @@ function extractLiteralAfterKey(input: string, key: string): string | undefined 
   return input.slice(valueStart, primitiveEnd).trim();
 }
 
-function findPropertyIndex(input: string, key: string): number {
-  for (let index = 0; index < input.length; index++) {
+function findPropertyIndex(input: string, key: string, start: number): number {
+  for (let index = start; index < input.length; index++) {
     const char = input[index];
 
     if (char === '"' || char === "'" || char === "`") {
@@ -208,6 +231,21 @@ function findPropertyIndex(input: string, key: string): number {
   }
 
   return -1;
+}
+
+function extractLogsLiteral(input: string): string | undefined {
+  let searchFrom = 0;
+
+  while (searchFrom < input.length) {
+    const propertyIndex = findPropertyIndex(input, "logs", searchFrom);
+    if (propertyIndex === -1) return undefined;
+
+    const literal = extractLiteralAfterKey(input.slice(propertyIndex), "logs");
+    if (literal?.startsWith("[") && literal.includes("boss") && literal.includes("dps")) return literal;
+    searchFrom = propertyIndex + 4;
+  }
+
+  return undefined;
 }
 
 function startsWithProperty(input: string, index: number, key: string): boolean {
@@ -322,6 +360,12 @@ function normalizeHeader(header: RawHeader): CharacterHeader {
 
 function normalizeLogEntry(value: unknown): LogEntry {
   const log = value as Record<string, unknown>;
+  for (const field of ["id", "name", "boss", "difficulty", "dps", "ndps", "class", "duration", "timestamp"]) {
+    if (log[field] === undefined || log[field] === null) {
+      throw new LostArkBibleError("api_shape", `lostark.bible log entry is missing ${field}`);
+    }
+  }
+
   return {
     id: String(log.id),
     name: String(log.name),
@@ -346,6 +390,19 @@ function normalizeLogEntry(value: unknown): LogEntry {
     isBus: Boolean(log.isBus),
     isDead: Boolean(log.isDead)
   };
+}
+
+function errorForStatus(status: number, prefix: string): LostArkBibleError {
+  if (status === 401 || status === 403) {
+    return new LostArkBibleError("session_required", `${prefix} with ${status}; lostark.bible may require a browser session`, status);
+  }
+  if (status === 404) {
+    return new LostArkBibleError("not_found", `${prefix} with 404`, status);
+  }
+  if (status === 429) {
+    return new LostArkBibleError("rate_limited", `${prefix} with 429; lostark.bible is rate limiting requests`, status);
+  }
+  return new LostArkBibleError("http_error", `${prefix} with ${status}`, status);
 }
 
 function requiredMatch(input: string, pattern: RegExp, fieldName: string): string {

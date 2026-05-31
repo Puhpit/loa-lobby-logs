@@ -15,6 +15,10 @@ body {
   background: #101417;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 .app-shell {
   min-height: 100vh;
   padding: 18px;
@@ -55,8 +59,19 @@ p {
   grid-template-columns: 112px 1fr 84px;
 }
 
+.controls.settings-grid {
+  grid-template-columns: 112px 180px 1fr;
+}
+
 .controls.stacked {
   grid-template-columns: 1fr;
+}
+
+.controls.compact {
+  grid-template-columns: 1fr 84px auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
 }
 
 label {
@@ -101,6 +116,13 @@ button.primary {
   font-weight: 650;
 }
 
+.icon-button {
+  width: 32px;
+  min-height: 32px;
+  padding: 0;
+  font-weight: 700;
+}
+
 button:disabled {
   cursor: wait;
   opacity: 0.65;
@@ -129,6 +151,12 @@ button:disabled {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  color: #9fb0b4;
+  font-size: 12px;
+}
+
+#settingsMessage {
+  min-width: 0;
   color: #9fb0b4;
   font-size: 12px;
 }
@@ -183,7 +211,8 @@ button:disabled {
 }
 
 .meta,
-.flags {
+.flags,
+.error {
   color: #91a1a5;
   font-size: 12px;
 }
@@ -191,6 +220,11 @@ button:disabled {
 .flags {
   margin-top: 4px;
   color: #dfb56a;
+}
+
+.error {
+  margin-top: 4px;
+  color: #ff9b8f;
 }
 
 .metric {
@@ -209,13 +243,59 @@ button:disabled {
   text-align: center;
 }
 
+.overlay-shell {
+  min-height: 100vh;
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+  grid-template-rows: auto auto auto 1fr;
+  background: #101417;
+}
+
+.overlay-header {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 10px;
+  -webkit-app-region: drag;
+}
+
+.overlay-header button {
+  -webkit-app-region: no-drag;
+}
+
+.overlay-summary {
+  grid-template-columns: 1fr 76px 110px;
+}
+
+.warnings {
+  display: grid;
+  gap: 6px;
+}
+
+.warnings div {
+  padding: 8px 10px;
+  border: 1px solid #60492a;
+  border-radius: 6px;
+  background: #241b10;
+  color: #dfb56a;
+  font-size: 12px;
+}
+
+.overlay-results .row {
+  grid-template-columns: minmax(120px, 1fr) repeat(3, 76px);
+}
+
 @media (max-width: 640px) {
   body {
     min-width: 360px;
   }
 
   .controls,
+  .controls.settings-grid,
+  .controls.compact,
   .summary-strip,
+  .overlay-summary,
   .row {
     grid-template-columns: 1fr;
   }

@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { buildLogsRequestBody, extractPageData, LostArkBibleProvider } from "../src/main/lostarkBible.js";
+import { buildLogsRequestBody, extractPageData, LostArkBibleError, LostArkBibleProvider } from "../src/main/lostarkBible.js";
 import type { CharacterHeader } from "../src/shared/types.js";
 
 const fixtureUrl = new URL("./fixtures/pepegami-page.html", import.meta.url);
@@ -117,4 +117,80 @@ describe("LostArkBibleProvider page extraction", () => {
       page: 2
     });
   });
+
+  it("starts at API page one when embedded logs are absent", async () => {
+    const bodies: unknown[] = [];
+    const fetchMock = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      if (String(input).endsWith("/api/character/logs")) {
+        bodies.push(JSON.parse(String(init?.body)) as unknown);
+        return Response.json([]);
+      }
+
+      return new Response(minimalPage({ logsLiteral: "[]" }), { status: 200 });
+    };
+
+    await new LostArkBibleProvider(fetchMock as typeof fetch).getCharacterLogs("NA", "Pepegami", 2);
+
+    expect(bodies).toEqual([
+      {
+        region: "NA",
+        characterSerial: "200000000063884",
+        className: "Sorceress",
+        cid: 22864512,
+        rid: 219368,
+        page: 1
+      }
+    ]);
+  });
+
+  it("throws concrete errors for private or missing characters", async () => {
+    const privateProvider = new LostArkBibleProvider((async () =>
+      new Response(minimalPage({ logsEnabled: false }), { status: 200 })) as typeof fetch);
+    const missingProvider = new LostArkBibleProvider((async () =>
+      new Response("no character here", { status: 200 })) as typeof fetch);
+
+    await expect(privateProvider.getCharacterLogs("NA", "Astery")).rejects.toMatchObject({
+      code: "private_logs"
+    });
+    await expect(missingProvider.getCharacterLogs("NA", "DefinitelyMissing")).rejects.toMatchObject({
+      code: "not_found"
+    });
+  });
+
+  it("throws typed errors for rate limits and invalid API payloads", async () => {
+    const rateLimitedProvider = new LostArkBibleProvider((async () =>
+      new Response("too many", { status: 429 })) as typeof fetch);
+    await expect(rateLimitedProvider.getCharacterLogs("NA", "Pepegami")).rejects.toMatchObject({
+      code: "rate_limited",
+      status: 429
+    });
+
+    const invalidApiProvider = new LostArkBibleProvider((async (input: RequestInfo | URL) => {
+      if (String(input).endsWith("/api/character/logs")) return Response.json({ nope: true });
+      return new Response(minimalPage({ logsLiteral: "[]" }), { status: 200 });
+    }) as typeof fetch);
+
+    await expect(invalidApiProvider.getCharacterLogs("NA", "Pepegami")).rejects.toBeInstanceOf(LostArkBibleError);
+    await expect(invalidApiProvider.getCharacterLogs("NA", "Pepegami")).rejects.toMatchObject({
+      code: "api_shape"
+    });
+  });
 });
+
+function minimalPage(options: { logsEnabled?: boolean; logsLiteral?: string } = {}): string {
+  const logsEnabled = options.logsEnabled ?? true;
+  const logsLiteral = options.logsLiteral ?? "[{id:\"one\",name:\"Pepegami\",boss:\"Boss\",difficulty:\"Hard\",dps:1,ndps:1,class:\"Sorceress\",duration:1,timestamp:1,isBus:false,isDead:false,percentile:.5}]";
+
+  return `
+    <script>
+      kit.start({
+        data: [{
+          header: { id: 22864512, sn: "200000000063884", rid: 219368, ilvl: 1765, class: "elemental_master", world: "Brelshaza" },
+          logsEnabled: ${logsEnabled},
+          isPublic: true,
+          logs: ${logsLiteral}
+        }]
+      });
+    </script>
+  `;
+}
