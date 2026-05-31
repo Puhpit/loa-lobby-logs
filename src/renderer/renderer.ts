@@ -119,8 +119,8 @@ function initOverlay(): void {
     await window.loaLobbyLogs.dismissOverlay();
   });
 
-  window.loaLobbyLogs.onScanResultUpdated(() => {
-    void renderLatestOverlayResult();
+  window.loaLobbyLogs.onScanResultUpdated((result) => {
+    renderOverlayResult(result);
   });
 
   void renderLatestOverlayResult();
@@ -129,7 +129,10 @@ function initOverlay(): void {
 async function renderLatestOverlayResult(): Promise<void> {
   const result = await window.loaLobbyLogs.getLastResult();
   if (!result) return;
+  renderOverlayResult(result);
+}
 
+function renderOverlayResult(result: ScanResult): void {
   renderSummary(result, byId("overlayEncounter"), byId("overlayDetected"), byId("overlayUpdated"));
   byId("overlayStatus").textContent = (result.encounter.groupName ?? result.encounter.visibleText) || "Unknown encounter";
   renderWarnings(result);

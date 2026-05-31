@@ -41,7 +41,7 @@ export interface AppApi {
   reviewLobby(input: ReviewLobbyInput): Promise<ReviewLobbyOutput>;
   startScan(): Promise<ScanResult>;
   getLastResult(): Promise<ScanResult | undefined>;
-  onScanResultUpdated(callback: () => void): () => void;
+  onScanResultUpdated(callback: (result: ScanResult) => void): () => void;
   showLastResults(): Promise<boolean>;
   dismissOverlay(): Promise<void>;
   getSettings(): Promise<AppSettings>;

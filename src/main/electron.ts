@@ -253,7 +253,12 @@ async function showOverlayWindow(result: ScanResult | undefined): Promise<void> 
   overlayWindow.setBounds({ width, height, x, y });
   overlayWindow.setAlwaysOnTop(true, "screen-saver");
   overlayWindow.show();
-  overlayWindow.webContents.send("scan-result-updated");
+  logger?.info("overlay.show", {
+    candidateCount: result.candidates.length,
+    summaryCount: result.summaries.length,
+    generatedAt: result.generatedAt
+  });
+  overlayWindow.webContents.send("scan-result-updated", result);
 }
 
 function registerScanHotkey(hotkey: string): void {
