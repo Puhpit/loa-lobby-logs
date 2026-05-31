@@ -257,11 +257,13 @@ button:disabled {
   grid-template-columns: 1fr auto;
   align-items: center;
   gap: 10px;
-  -webkit-app-region: drag;
+  -webkit-app-region: no-drag;
 }
 
-.overlay-header button {
-  -webkit-app-region: no-drag;
+#dismissOverlay {
+  position: relative;
+  z-index: 2;
+  pointer-events: auto;
 }
 
 .overlay-summary {

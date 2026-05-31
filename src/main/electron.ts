@@ -105,15 +105,30 @@ function registerIpc(): void {
     return true;
   });
   ipcMain.handle("dismiss-overlay", async () => {
-    logger?.info("overlay.dismiss");
+    logger?.info("overlay.dismiss", {
+      hasWindow: Boolean(overlayWindow),
+      visible: Boolean(overlayWindow?.isVisible())
+    });
     overlayWindow?.hide();
+    return Boolean(overlayWindow && !overlayWindow.isVisible());
   });
 
   ipcMain.handle("open-logs", async () => {
-    logger?.info("logs.open", { logDirectory, logPath: logger.logPath });
-    const result = await shell.openPath(logDirectory);
-    if (result) throw new Error(result);
-    return logDirectory;
+    const logPath = logger?.logPath ?? join(logDirectory, "diagnostics.jsonl");
+    await mkdir(logDirectory, { recursive: true });
+    await writeFile(logPath, "", { flag: "a" });
+    logger?.info("logs.open", { logDirectory, logPath });
+    const result = await shell.openPath(logPath);
+    if (result) {
+      shell.showItemInFolder(logPath);
+      logger?.warn("logs.open.fallback", { logDirectory, logPath, result });
+      return logPath;
+    }
+    return logPath;
+  });
+
+  ipcMain.handle("renderer-event", async (_event, event: string, data: Record<string, unknown>) => {
+    logger?.info(`renderer.${event}`, data);
   });
 
   ipcMain.handle("renderer-error", async (_event, event: string, data: Record<string, unknown>) => {

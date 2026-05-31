@@ -114,12 +114,25 @@ function initOverlay(): void {
   const overlayView = byId("overlayView");
   byId("settingsView").hidden = true;
   overlayView.hidden = false;
+  void window.loaLobbyLogs.reportRendererEvent("overlay.init");
 
   byId<HTMLButtonElement>("dismissOverlay").addEventListener("click", async () => {
+    void window.loaLobbyLogs.reportRendererEvent("overlay.dismiss.clicked");
+    await window.loaLobbyLogs.dismissOverlay();
+  });
+
+  window.addEventListener("keydown", async (event) => {
+    if (event.key !== "Escape") return;
+    void window.loaLobbyLogs.reportRendererEvent("overlay.dismiss.escape");
     await window.loaLobbyLogs.dismissOverlay();
   });
 
   window.loaLobbyLogs.onScanResultUpdated((result) => {
+    void window.loaLobbyLogs.reportRendererEvent("overlay.result.received", {
+      candidates: result.candidates.length,
+      summaries: result.summaries.length,
+      generatedAt: result.generatedAt
+    });
     renderOverlayResult(result);
   });
 
@@ -137,6 +150,11 @@ function renderOverlayResult(result: ScanResult): void {
   byId("overlayStatus").textContent = (result.encounter.groupName ?? result.encounter.visibleText) || "Unknown encounter";
   renderWarnings(result);
   renderRows(result.summaries, byId("overlayResults"));
+  void window.loaLobbyLogs.reportRendererEvent("overlay.result.rendered", {
+    candidates: result.candidates.length,
+    summaries: result.summaries.length,
+    warnings: result.warnings.length
+  });
 }
 
 function renderSummary(
