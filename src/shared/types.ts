@@ -1,4 +1,4 @@
-export type Region = "NA" | "CE" | "NAW" | "NAE";
+export type Region = "NA" | "CE";
 
 export type OcrSourceMode =
   | "applicant-list"
@@ -80,6 +80,7 @@ export interface CharacterSummary {
   medianNdps: number | null;
   latestTimestamp: number | null;
   flags: SummaryFlag[];
+  errorMessage?: string;
 }
 
 export type SummaryFlag =

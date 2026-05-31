@@ -120,6 +120,7 @@ describe("summarizeLobbyCharacters", () => {
 
     expect(summary.characters.map((character) => character.name)).toEqual(["Broken", "Pepegami"]);
     expect(summary.characters[0].flags).toEqual(["no-public-logs", "scrape-failed"]);
+    expect(summary.characters[0].errorMessage).toBe("request failed");
     expect(summary.characters[1].flags).not.toContain("scrape-failed");
   });
 });

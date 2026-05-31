@@ -7,41 +7,45 @@
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
-    <main class="app-shell">
+    <main id="settingsView" class="app-shell">
       <section class="toolbar">
         <div>
           <h1>LOA Lobby Logs</h1>
           <p id="status">Ready</p>
         </div>
-        <label class="toggle">
-          <input id="alwaysOnTop" type="checkbox" checked />
-          <span>Top</span>
-        </label>
+        <button id="scanNow" class="primary">Scan Now</button>
       </section>
 
-      <section class="controls">
+      <section class="controls settings-grid">
         <label>
-          Region
-          <select id="region">
+          Server
+          <select id="server">
             <option value="NA">NA</option>
-            <option value="NAE">NAE</option>
-            <option value="NAW">NAW</option>
             <option value="CE">CE</option>
           </select>
         </label>
         <label>
-          Encounter
-          <input id="encounter" value="[Normal]Dark Baratron" />
+          Hotkey
+          <input id="scanHotkey" value="Ctrl+Alt+D" />
         </label>
         <label>
-          Pages
-          <input id="pages" type="number" min="1" max="10" value="3" />
+          Capture
+          <input id="captureMode" value="foreground-window-display" disabled />
         </label>
       </section>
 
       <section class="controls stacked">
+        <div class="screenshot-row">
+          <button id="saveSettings">Save Settings</button>
+          <button id="showLastResults">Show Last Results</button>
+          <button id="openLogs">Open Logs</button>
+          <span id="settingsMessage"></span>
+        </div>
+      </section>
+
+      <section class="controls stacked">
         <label>
-          Character names
+          Manual test character names
           <textarea id="manualNames" spellcheck="false" placeholder="One name per line">Badseedrestart</textarea>
         </label>
         <div class="screenshot-row">
@@ -52,7 +56,17 @@
           </label>
           <span id="screenshotPath"></span>
         </div>
-        <button id="reviewLobby" class="primary">Review Lobby</button>
+        <div class="controls compact">
+          <label>
+            Encounter
+            <input id="encounter" value="[Normal]Dark Baratron" />
+          </label>
+          <label>
+            Pages
+            <input id="pages" type="number" min="1" max="10" value="3" />
+          </label>
+          <button id="reviewLobby" class="primary">Review Test Lobby</button>
+        </div>
       </section>
 
       <section class="summary-strip">
@@ -70,8 +84,35 @@
         </div>
       </section>
 
-      <section id="results" class="results"></section>
+      <section id="settingsResults" class="results"></section>
     </main>
+
+    <main id="overlayView" class="overlay-shell" hidden>
+      <header class="overlay-header">
+        <div>
+          <h1>LOA Lobby Logs</h1>
+          <p id="overlayStatus">No results yet</p>
+        </div>
+        <button id="dismissOverlay" class="icon-button" title="Dismiss">x</button>
+      </header>
+      <section class="summary-strip overlay-summary">
+        <div>
+          <span>Encounter</span>
+          <strong id="overlayEncounter">Unknown</strong>
+        </div>
+        <div>
+          <span>Detected</span>
+          <strong id="overlayDetected">0</strong>
+        </div>
+        <div>
+          <span>Updated</span>
+          <strong id="overlayUpdated">Never</strong>
+        </div>
+      </section>
+      <section id="overlayWarnings" class="warnings"></section>
+      <section id="overlayResults" class="results overlay-results"></section>
+    </main>
+
     <script type="module" src="./renderer.js"></script>
   </body>
 </html>

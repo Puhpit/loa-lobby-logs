@@ -1,5 +1,6 @@
 import type { CharacterCandidate, CharacterSource, OcrSourceMode, Rect } from "../shared/types.js";
 import { cropRectForMode, type CalibrationConfig } from "./calibration.js";
+import type { DiagnosticsLogger } from "./diagnostics.js";
 import { dedupeCharacterCandidates, normalizeOcrName } from "./nameNormalization.js";
 
 interface TesseractResult {
@@ -9,12 +10,24 @@ interface TesseractResult {
   };
 }
 
+interface TesseractRect {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
 interface TesseractModule {
   recognize(
     imagePath: string,
     language?: string,
-    options?: { rectangle?: Rect; tessedit_char_whitelist?: string }
+    options?: { rectangle?: TesseractRect; tessedit_char_whitelist?: string }
   ): Promise<TesseractResult>;
+  createWorker?: (language?: string) => Promise<{
+    setParameters(params: Record<string, string>): Promise<void>;
+    recognize(imagePath: string, options?: { rectangle?: TesseractRect }): Promise<TesseractResult>;
+    terminate(): Promise<void>;
+  }>;
 }
 
 export interface ScreenshotCharacterSourceOptions {
@@ -22,6 +35,8 @@ export interface ScreenshotCharacterSourceOptions {
   calibration: CalibrationConfig;
   sourceMode?: OcrSourceMode;
   tesseract?: TesseractModule;
+  logger?: DiagnosticsLogger;
+  scanId?: string;
 }
 
 export class ScreenshotCharacterSource implements CharacterSource {
@@ -34,13 +49,35 @@ export class ScreenshotCharacterSource implements CharacterSource {
   async getVisibleApplicants(): Promise<CharacterCandidate[]> {
     const tesseract = this.options.tesseract ?? (await loadTesseract());
     const cropRect = cropRectForMode(this.options.calibration, this.sourceMode);
-    const result = await tesseract.recognize(this.options.imagePath, "eng", {
-      rectangle: cropRect,
-      tessedit_char_whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 "
-    });
+    const result = await recognizeText(tesseract, this.options.imagePath, cropRect);
 
-    return candidatesFromOcrText(result.data.text, result.data.confidence, this.sourceMode, cropRect);
+    const candidates = candidatesFromOcrText(result.data.text, result.data.confidence, this.sourceMode, cropRect);
+    this.options.logger?.info("ocr.characters", {
+      scanId: this.options.scanId,
+      imagePath: this.options.imagePath,
+      sourceMode: this.sourceMode,
+      cropRect,
+      confidence: result.data.confidence,
+      rawText: result.data.text,
+      candidates: candidates.map((candidate) => ({
+        rawText: candidate.rawText,
+        normalizedName: candidate.normalizedName,
+        confidence: candidate.confidence
+      }))
+    });
+    return candidates;
   }
+}
+
+export async function getEncounterTextFromScreenshot(
+  imagePath: string,
+  calibration: CalibrationConfig,
+  tesseract?: TesseractModule
+): Promise<string> {
+  const engine = tesseract ?? (await loadTesseract());
+  const result = await recognizeText(engine, imagePath, calibration.encounterTitle, false);
+
+  return result.data.text.replace(/\s+/g, " ").trim();
 }
 
 export function candidatesFromOcrText(
@@ -65,9 +102,46 @@ export function candidatesFromOcrText(
   );
 }
 
+async function recognizeText(
+  tesseract: TesseractModule,
+  imagePath: string,
+  cropRect: Rect,
+  whitelist = true
+): Promise<TesseractResult> {
+  const rectangle = toTesseractRect(cropRect);
+  if (tesseract.createWorker) {
+    const worker = await tesseract.createWorker("eng");
+    try {
+      if (whitelist) {
+        await worker.setParameters({
+          tessedit_char_whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 "
+        });
+      }
+      return await worker.recognize(imagePath, { rectangle });
+    } finally {
+      await worker.terminate();
+    }
+  }
+
+  return tesseract.recognize(imagePath, "eng", {
+    rectangle,
+    ...(whitelist ? { tessedit_char_whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 " } : {})
+  });
+}
+
+function toTesseractRect(rect: Rect): TesseractRect {
+  return {
+    left: rect.x,
+    top: rect.y,
+    width: rect.width,
+    height: rect.height
+  };
+}
+
 async function loadTesseract(): Promise<TesseractModule> {
   try {
-    return (await import("tesseract.js")) as TesseractModule;
+    const module = await import("tesseract.js") as TesseractModule & { default?: TesseractModule };
+    return typeof module.recognize === "function" ? module : module.default as TesseractModule;
   } catch (error) {
     throw new Error(`OCR engine is unavailable. Install dependencies before using screenshot OCR. ${String(error)}`);
   }
