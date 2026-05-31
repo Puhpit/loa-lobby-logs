@@ -12,3 +12,4 @@ applicant-*.png
 *.sqlite-*
 fixtures/private/
 LOCAL_DEV_NOTES.md
+CONTEXT.md

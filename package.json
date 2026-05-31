@@ -5,6 +5,9 @@
   "description": "Personal Lost Ark lobby log overlay.",
   "type": "module",
   "main": "dist/src/main/electron.js",
+  "engines": {
+    "node": ">=24 <25"
+  },
   "scripts": {
     "build": "tsc && node scripts/copy-renderer-assets.mjs",
     "start": "tsc && node scripts/copy-renderer-assets.mjs && electron .",
@@ -28,7 +31,7 @@
     }
   },
   "devDependencies": {
-    "@types/node": "^22.0.0",
+    "@types/node": "^24.0.0",
     "electron": "^35.0.0",
     "electron-builder": "^26.0.0",
     "typescript": "^5.8.0",

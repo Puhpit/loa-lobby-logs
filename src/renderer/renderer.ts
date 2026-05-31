@@ -1,56 +1,94 @@
 import type { Region } from "../shared/types.js";
-import type { ScanResult } from "../shared/appTypes.js";
+import type { AppApi, ScanResult } from "../shared/appTypes.js";
 
-const view = new URLSearchParams(window.location.search).get("view") ?? "settings";
-
-if (view === "overlay") {
-  initOverlay();
-} else {
-  initSettings();
+interface RendererEnvironment {
+  window: Window;
+  document: Document;
 }
 
-window.addEventListener("error", (event) => {
-  void window.loaLobbyLogs.reportRendererError("error", {
-    message: event.message,
-    filename: event.filename,
-    lineno: event.lineno,
-    colno: event.colno,
-    error: event.error instanceof Error ? event.error.stack ?? event.error.message : String(event.error)
-  });
-});
+export function bootRenderer(env: RendererEnvironment = { window, document }): void {
+  installErrorHandlers(env);
+  const api = getApi(env.window);
 
-window.addEventListener("unhandledrejection", (event) => {
-  void window.loaLobbyLogs.reportRendererError("unhandledrejection", {
-    reason: event.reason instanceof Error ? event.reason.stack ?? event.reason.message : String(event.reason)
-  });
-});
+  if (!api) {
+    renderFatalPreloadError(env.document);
+    return;
+  }
 
-function initSettings(): void {
-  const statusEl = byId("status");
-  const resultsEl = byId("settingsResults");
-  const scanButton = byId<HTMLButtonElement>("scanNow");
-  const reviewButton = byId<HTMLButtonElement>("reviewLobby");
-  const screenshotPathEl = byId("screenshotPath");
-  const candidateCountEl = byId("candidateCount");
-  const encounterSummaryEl = byId("encounterSummary");
-  const updatedAtEl = byId("updatedAt");
-  const settingsMessageEl = byId("settingsMessage");
+  void reportRendererEvent(api, "boot.start", { href: env.window.location.href });
+  void reportRendererEvent(api, "boot.api-ready");
+
+  const view = new URLSearchParams(env.window.location.search).get("view") ?? "settings";
+  if (view === "overlay") {
+    initOverlay(env, api);
+  } else {
+    initSettings(env, api);
+  }
+}
+
+function installErrorHandlers(env: RendererEnvironment): void {
+  env.window.addEventListener("error", (event) => {
+    const api = getApi(env.window);
+    if (!api) return;
+    void api.reportRendererError("error", {
+      message: event.message,
+      filename: event.filename,
+      lineno: event.lineno,
+      colno: event.colno,
+      error: event.error instanceof Error ? event.error.stack ?? event.error.message : String(event.error)
+    });
+  });
+
+  env.window.addEventListener("unhandledrejection", (event) => {
+    const api = getApi(env.window);
+    if (!api) return;
+    void api.reportRendererError("unhandledrejection", {
+      reason: event.reason instanceof Error ? event.reason.stack ?? event.reason.message : String(event.reason)
+    });
+  });
+}
+
+function getApi(windowObj: Window): AppApi | undefined {
+  return windowObj.loaLobbyLogs;
+}
+
+function renderFatalPreloadError(documentObj: Document): void {
+  const message = documentObj.createElement("main");
+  message.className = "fatal-error";
+  message.innerHTML = `
+    <h1>LOA Lobby Logs</h1>
+    <p>Renderer preload API is unavailable. Restart the app and check diagnostics.</p>
+  `;
+  documentObj.body.replaceChildren(message);
+}
+
+function initSettings(env: RendererEnvironment, api: AppApi): void {
+  void reportRendererEvent(api, "settings.init");
+  const statusEl = byId(env.document, "status");
+  const resultsEl = byId(env.document, "settingsResults");
+  const scanButton = byId<HTMLButtonElement>(env.document, "scanNow");
+  const reviewButton = byId<HTMLButtonElement>(env.document, "reviewLobby");
+  const screenshotPathEl = byId(env.document, "screenshotPath");
+  const candidateCountEl = byId(env.document, "candidateCount");
+  const encounterSummaryEl = byId(env.document, "encounterSummary");
+  const updatedAtEl = byId(env.document, "updatedAt");
+  const settingsMessageEl = byId(env.document, "settingsMessage");
   let screenshotPath: string | undefined;
 
-  byId("overlayView").hidden = true;
-  byId("settingsView").hidden = false;
+  byId(env.document, "overlayView").hidden = true;
+  byId(env.document, "settingsView").hidden = false;
 
-  void window.loaLobbyLogs.getSettings().then((settings) => {
-    byId<HTMLSelectElement>("server").value = settings.server;
-    byId<HTMLInputElement>("scanHotkey").value = settings.scanHotkey;
-    byId<HTMLInputElement>("captureMode").value = settings.captureMode;
+  void api.getSettings().then((settings) => {
+    byId<HTMLSelectElement>(env.document, "server").value = settings.server;
+    byId<HTMLInputElement>(env.document, "scanHotkey").value = settings.scanHotkey;
+    byId<HTMLInputElement>(env.document, "captureMode").value = settings.captureMode;
   });
 
-  byId<HTMLButtonElement>("saveSettings").addEventListener("click", async () => {
-    void reportClick("settings.save");
-    const settings = await window.loaLobbyLogs.saveSettings({
-      server: byId<HTMLSelectElement>("server").value as Region,
-      scanHotkey: byId<HTMLInputElement>("scanHotkey").value,
+  byId<HTMLButtonElement>(env.document, "saveSettings").addEventListener("click", async () => {
+    void reportClick(api, "settings.save");
+    const settings = await api.saveSettings({
+      server: byId<HTMLSelectElement>(env.document, "server").value as Region,
+      scanHotkey: byId<HTMLInputElement>(env.document, "scanHotkey").value,
       captureMode: "foreground-window-display",
       overlayPosition: "right"
     });
@@ -58,108 +96,109 @@ function initSettings(): void {
   });
 
   scanButton.addEventListener("click", async () => {
-    void reportClick("settings.scanNow");
+    void reportClick(api, "settings.scanNow");
     setBusy(scanButton, true, statusEl, "Scanning...");
     try {
-      const output = await window.loaLobbyLogs.startScan();
+      const output = await api.startScan();
       renderSummary(output, encounterSummaryEl, candidateCountEl, updatedAtEl);
-      renderRows(output.summaries, resultsEl);
+      renderRows(env.document, output.summaries, resultsEl);
       setBusy(scanButton, false, statusEl, `Loaded ${output.summaries.length} character${output.summaries.length === 1 ? "" : "s"}`);
     } catch (error) {
       setBusy(scanButton, false, statusEl, errorMessage(error));
-      void window.loaLobbyLogs.reportRendererError("settings.scanNow.failed", { message: errorMessage(error) });
+      void api.reportRendererError("settings.scanNow.failed", { message: errorMessage(error) });
     }
   });
 
-  byId<HTMLButtonElement>("showLastResults").addEventListener("click", async () => {
-    void reportClick("settings.showLastResults");
-    const shown = await window.loaLobbyLogs.showLastResults();
+  byId<HTMLButtonElement>(env.document, "showLastResults").addEventListener("click", async () => {
+    void reportClick(api, "settings.showLastResults");
+    const shown = await api.showLastResults();
     settingsMessageEl.textContent = shown ? "Showing last results" : "No scan results yet";
   });
 
-  byId<HTMLButtonElement>("openLogs").addEventListener("click", async () => {
-    void reportClick("settings.openLogs");
+  byId<HTMLButtonElement>(env.document, "openLogs").addEventListener("click", async () => {
+    void reportClick(api, "settings.openLogs");
     try {
-      const path = await window.loaLobbyLogs.openLogs();
+      const path = await api.openLogs();
       settingsMessageEl.textContent = `Opened logs: ${path}`;
     } catch (error) {
       settingsMessageEl.textContent = errorMessage(error);
     }
   });
 
-  byId<HTMLButtonElement>("chooseScreenshot").addEventListener("click", async () => {
-    void reportClick("settings.chooseScreenshot");
-    screenshotPath = await window.loaLobbyLogs.chooseScreenshot();
+  byId<HTMLButtonElement>(env.document, "chooseScreenshot").addEventListener("click", async () => {
+    void reportClick(api, "settings.chooseScreenshot");
+    screenshotPath = await api.chooseScreenshot();
     screenshotPathEl.textContent = screenshotPath ?? "";
   });
 
   reviewButton.addEventListener("click", async () => {
-    void reportClick("settings.reviewLobby");
+    void reportClick(api, "settings.reviewLobby");
     setBusy(reviewButton, true, statusEl, "Reviewing lobby...");
     resultsEl.innerHTML = "";
 
     try {
-      const output = await window.loaLobbyLogs.reviewLobby({
-        region: byId<HTMLSelectElement>("server").value as Region,
-        visibleEncounterText: byId<HTMLInputElement>("encounter").value,
-        manualNames: byId<HTMLTextAreaElement>("manualNames").value.split(/\r?\n|,/).map((name) => name.trim()).filter(Boolean),
+      const output = await api.reviewLobby({
+        region: byId<HTMLSelectElement>(env.document, "server").value as Region,
+        visibleEncounterText: byId<HTMLInputElement>(env.document, "encounter").value,
+        manualNames: byId<HTMLTextAreaElement>(env.document, "manualNames").value.split(/\r?\n|,/).map((name) => name.trim()).filter(Boolean),
         screenshotPath,
-        useScreenshotOcr: byId<HTMLInputElement>("useOcr").checked,
-        pages: Number(byId<HTMLInputElement>("pages").value) || 3
+        useScreenshotOcr: byId<HTMLInputElement>(env.document, "useOcr").checked,
+        pages: Number(byId<HTMLInputElement>(env.document, "pages").value) || 3
       });
 
       renderSummary(output, encounterSummaryEl, candidateCountEl, updatedAtEl);
-      renderRows(output.summaries, resultsEl);
+      renderRows(env.document, output.summaries, resultsEl);
       setBusy(reviewButton, false, statusEl, `Loaded ${output.summaries.length} character${output.summaries.length === 1 ? "" : "s"}`);
     } catch (error) {
       setBusy(reviewButton, false, statusEl, errorMessage(error));
-      void window.loaLobbyLogs.reportRendererError("settings.reviewLobby.failed", { message: errorMessage(error) });
+      void api.reportRendererError("settings.reviewLobby.failed", { message: errorMessage(error) });
       resultsEl.innerHTML = `<div class="empty">Review failed</div>`;
     }
   });
 }
 
-function initOverlay(): void {
-  const overlayView = byId("overlayView");
-  byId("settingsView").hidden = true;
+function initOverlay(env: RendererEnvironment, api: AppApi): void {
+  const overlayView = byId(env.document, "overlayView");
+  byId(env.document, "settingsView").hidden = true;
   overlayView.hidden = false;
-  void window.loaLobbyLogs.reportRendererEvent("overlay.init");
+  void reportRendererEvent(api, "overlay.init");
 
-  byId<HTMLButtonElement>("dismissOverlay").addEventListener("click", async () => {
-    void window.loaLobbyLogs.reportRendererEvent("overlay.dismiss.clicked");
-    await window.loaLobbyLogs.dismissOverlay();
+  byId<HTMLButtonElement>(env.document, "dismissOverlay").addEventListener("click", async () => {
+    void reportClick(api, "overlay.dismiss");
+    void reportRendererEvent(api, "overlay.dismiss.clicked");
+    await api.dismissOverlay();
   });
 
-  window.addEventListener("keydown", async (event) => {
+  env.window.addEventListener("keydown", async (event) => {
     if (event.key !== "Escape") return;
-    void window.loaLobbyLogs.reportRendererEvent("overlay.dismiss.escape");
-    await window.loaLobbyLogs.dismissOverlay();
+    void reportRendererEvent(api, "overlay.dismiss.escape");
+    await api.dismissOverlay();
   });
 
-  window.loaLobbyLogs.onScanResultUpdated((result) => {
-    void window.loaLobbyLogs.reportRendererEvent("overlay.result.received", {
+  api.onScanResultUpdated((result) => {
+    void reportRendererEvent(api, "overlay.result.received", {
       candidates: result.candidates.length,
       summaries: result.summaries.length,
       generatedAt: result.generatedAt
     });
-    renderOverlayResult(result);
+    renderOverlayResult(env.document, api, result);
   });
 
-  void renderLatestOverlayResult();
+  void renderLatestOverlayResult(env.document, api);
 }
 
-async function renderLatestOverlayResult(): Promise<void> {
-  const result = await window.loaLobbyLogs.getLastResult();
+async function renderLatestOverlayResult(documentObj: Document, api: AppApi): Promise<void> {
+  const result = await api.getLastResult();
   if (!result) return;
-  renderOverlayResult(result);
+  renderOverlayResult(documentObj, api, result);
 }
 
-function renderOverlayResult(result: ScanResult): void {
-  renderSummary(result, byId("overlayEncounter"), byId("overlayDetected"), byId("overlayUpdated"));
-  byId("overlayStatus").textContent = (result.encounter.groupName ?? result.encounter.visibleText) || "Unknown encounter";
-  renderWarnings(result);
-  renderRows(result.summaries, byId("overlayResults"));
-  void window.loaLobbyLogs.reportRendererEvent("overlay.result.rendered", {
+export function renderOverlayResult(documentObj: Document, api: AppApi, result: ScanResult): void {
+  renderSummary(result, byId(documentObj, "overlayEncounter"), byId(documentObj, "overlayDetected"), byId(documentObj, "overlayUpdated"));
+  byId(documentObj, "overlayStatus").textContent = (result.encounter.groupName ?? result.encounter.visibleText) || "Unknown encounter";
+  renderWarnings(documentObj, result);
+  renderRows(documentObj, result.summaries, byId(documentObj, "overlayResults"));
+  void reportRendererEvent(api, "overlay.result.rendered", {
     candidates: result.candidates.length,
     summaries: result.summaries.length,
     warnings: result.warnings.length
@@ -177,11 +216,11 @@ function renderSummary(
   updatedAtEl.textContent = new Date(output.generatedAt).toLocaleTimeString();
 }
 
-function renderWarnings(result: ScanResult): void {
-  const warningsEl = byId("overlayWarnings");
+function renderWarnings(documentObj: Document, result: ScanResult): void {
+  const warningsEl = byId(documentObj, "overlayWarnings");
   warningsEl.replaceChildren(
     ...result.warnings.map((warning) => {
-      const item = document.createElement("div");
+      const item = documentObj.createElement("div");
       item.textContent = warning;
       return item;
     })
@@ -189,7 +228,7 @@ function renderWarnings(result: ScanResult): void {
   warningsEl.hidden = result.warnings.length === 0;
 }
 
-function renderRows(summaries: Awaited<ReturnType<typeof window.loaLobbyLogs.reviewLobby>>["summaries"], resultsEl: HTMLElement): void {
+function renderRows(documentObj: Document, summaries: ScanResult["summaries"], resultsEl: HTMLElement): void {
   if (summaries.length === 0) {
     resultsEl.innerHTML = `<div class="empty">No characters found</div>`;
     return;
@@ -197,7 +236,7 @@ function renderRows(summaries: Awaited<ReturnType<typeof window.loaLobbyLogs.rev
 
   resultsEl.replaceChildren(
     ...summaries.map((summary) => {
-      const row = document.createElement("article");
+      const row = documentObj.createElement("article");
       row.className = "row";
       row.innerHTML = `
         <div class="identity">
@@ -244,12 +283,20 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-function reportClick(action: string): Promise<void> {
-  return window.loaLobbyLogs.reportRendererEvent("button.click", { action });
+function reportClick(api: AppApi, action: string): Promise<void> {
+  return reportRendererEvent(api, "button.click", { action });
 }
 
-function byId<T extends HTMLElement = HTMLElement>(id: string): T {
-  const element = document.getElementById(id);
+function reportRendererEvent(api: AppApi, event: string, data?: Record<string, unknown>): Promise<void> {
+  return api.reportRendererEvent(event, data).catch(() => undefined);
+}
+
+function byId<T extends HTMLElement = HTMLElement>(documentObj: Document, id: string): T {
+  const element = documentObj.getElementById(id);
   if (!element) throw new Error(`Missing element #${id}`);
   return element as T;
+}
+
+if (typeof window !== "undefined" && typeof document !== "undefined") {
+  bootRenderer();
 }
