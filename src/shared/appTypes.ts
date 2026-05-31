@@ -47,6 +47,7 @@ export interface AppApi {
   getSettings(): Promise<AppSettings>;
   saveSettings(settings: AppSettings): Promise<AppSettings>;
   openLogs(): Promise<string>;
+  reportRendererEvent(event: string, data?: Record<string, unknown>): Promise<void>;
   reportRendererError(event: string, data: Record<string, unknown>): Promise<void>;
   runScreenshotOcr(screenshotPath: string): Promise<CharacterCandidate[]>;
   chooseScreenshot(): Promise<string | undefined>;

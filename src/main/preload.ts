@@ -16,6 +16,7 @@ const api: AppApi = {
   getSettings: () => ipcRenderer.invoke("get-settings"),
   saveSettings: (settings: AppSettings) => ipcRenderer.invoke("save-settings", settings),
   openLogs: () => ipcRenderer.invoke("open-logs"),
+  reportRendererEvent: (event: string, data?: Record<string, unknown>) => ipcRenderer.invoke("renderer-event", event, data ?? {}),
   reportRendererError: (event: string, data: Record<string, unknown>) => ipcRenderer.invoke("renderer-error", event, data),
   runScreenshotOcr: (screenshotPath: string) => ipcRenderer.invoke("run-screenshot-ocr", screenshotPath),
   chooseScreenshot: () => ipcRenderer.invoke("choose-screenshot"),
