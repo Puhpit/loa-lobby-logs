@@ -44,14 +44,15 @@ Codex Cloud should not assume it has the same local fixtures or runtime context 
 Important local-only context may exist in ignored files such as:
 
 - CONTEXT.md
-- HAR captures
-- applicant screenshots
-- private fixtures
+- local/
+- local HAR captures
+- local applicant screenshots
+- local private fixtures
 - local logs
 - SQLite files
 - generated caches
 
-Read `CONTEXT.md` when available, but do not commit it. `LOCAL_DEV_NOTES.md` may exist in older workspaces and should also remain ignored.
+Read `CONTEXT.md` when available, but do not commit it.
 
 Never commit raw HAR files, cookies, session headers, screenshots with private information, local databases, generated caches, or private fixtures.
 
@@ -123,7 +124,7 @@ Local ignored notes should contain private working memory, fixture notes, HAR ob
 When making material repository changes, update the appropriate documentation before completing the task:
 
 - Update tracked docs for durable, non-private project behavior.
-- Update LOCAL_DEV_NOTES.md for private/local context when available.
+- Update CONTEXT.md for private/local context when available.
 - Do not duplicate README content unnecessarily.
 - Skip documentation updates for trivial edits that do not affect behavior, architecture, dependencies, workflow, configuration, or developer expectations.
 
@@ -135,6 +136,7 @@ Pay special attention to:
 
 - .har
 - screenshots
+- local/
 - cookies/session headers
 - tokens/API keys
 - local logs

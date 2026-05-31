@@ -1,6 +1,6 @@
 # lostark.bible API Notes
 
-Source: `lostark.bible.har` captured from `https://lostark.bible/character/NA/Pepegami/logs`.
+Source: ignored local HAR capture `local/lostark.bible.har` captured from `https://lostark.bible/character/NA/Pepegami/logs`.
 
 ## Character Page
 
