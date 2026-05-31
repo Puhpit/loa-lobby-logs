@@ -5,6 +5,7 @@ out/
 .cache/
 .tools/
 *.har
+applicant-*.png
 *.log
 *.sqlite
 *.sqlite-*
