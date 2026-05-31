@@ -1,13 +1,13 @@
 import { contextBridge, ipcRenderer } from "electron";
-import type { AppApi, AppSettings, ReviewLobbyInput } from "../shared/appTypes.js";
+import type { AppApi, AppSettings, ReviewLobbyInput, ScanResult } from "../shared/appTypes.js";
 import type { CalibrationConfig } from "./calibration.js";
 
 const api: AppApi = {
   reviewLobby: (input: ReviewLobbyInput) => ipcRenderer.invoke("review-lobby", input),
   startScan: () => ipcRenderer.invoke("start-scan"),
   getLastResult: () => ipcRenderer.invoke("get-last-result"),
-  onScanResultUpdated: (callback: () => void) => {
-    const listener = () => callback();
+  onScanResultUpdated: (callback: (result: ScanResult) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, result: ScanResult) => callback(result);
     ipcRenderer.on("scan-result-updated", listener);
     return () => ipcRenderer.removeListener("scan-result-updated", listener);
   },
