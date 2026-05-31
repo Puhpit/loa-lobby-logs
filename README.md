@@ -26,6 +26,26 @@ Checkpoint 3 adds encounter-aware lobby summaries:
 - character names are deduped before lookup;
 - fetched logs are summarized with current-encounter priority and per-character scrape failures.
 
+Checkpoint 4 stabilizes the local Electron renderer flow:
+
+- settings and overlay windows load a CommonJS preload bridge from `src/main/preload.cts`;
+- the renderer exposes diagnostics for boot, overlay rendering, and button clicks;
+- missing preload state renders a visible fatal message instead of silently failing;
+- local renderer tests cover overlay dismiss, manual scan/settings buttons, and result rendering.
+
+## Development
+
+Use Node 24 for local development and CI.
+
+Common checks:
+
+- `npm test`
+- `npm run typecheck`
+- `npm run build`
+- `npm run package:win`
+
+On Windows, if npm script shims are blocked by local execution policy, the same checks can be run through the local Node executable by invoking the underlying package entrypoints directly.
+
 ## Local Fixtures
 
 The current workspace contains:

@@ -243,6 +243,20 @@ button:disabled {
   text-align: center;
 }
 
+.fatal-error {
+  min-height: 100vh;
+  display: grid;
+  align-content: center;
+  gap: 8px;
+  padding: 24px;
+  background: #101417;
+}
+
+.fatal-error p {
+  max-width: 520px;
+  color: #ff9b8f;
+}
+
 .overlay-shell {
   min-height: 100vh;
   padding: 12px;

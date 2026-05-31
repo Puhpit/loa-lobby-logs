@@ -211,10 +211,13 @@ async function showSettingsWindow(): Promise<void> {
     show: false,
     backgroundColor: "#101417",
     webPreferences: {
-      preload: join(__dirname, "preload.js"),
+      preload: join(__dirname, "preload.cjs"),
       contextIsolation: true,
       nodeIntegration: false
     }
+  });
+  settingsWindow.webContents.on("preload-error", (_event, preloadPath, error) => {
+    logger?.error("settings.preload.error", error, { preloadPath });
   });
 
   settingsWindow.on("close", (event) => {
@@ -241,6 +244,7 @@ async function showOverlayWindow(result: ScanResult | undefined): Promise<void> 
   const y = primaryDisplay.workArea.y;
 
   if (!overlayWindow || overlayWindow.isDestroyed()) {
+    logger?.info("overlay.create", { width, height, x, y });
     overlayWindow = new BrowserWindow({
       width,
       height,
@@ -254,21 +258,33 @@ async function showOverlayWindow(result: ScanResult | undefined): Promise<void> 
       skipTaskbar: true,
       backgroundColor: "#101417",
       webPreferences: {
-        preload: join(__dirname, "preload.js"),
+        preload: join(__dirname, "preload.cjs"),
         contextIsolation: true,
         nodeIntegration: false
       }
     });
+    overlayWindow.webContents.on("preload-error", (_event, preloadPath, error) => {
+      logger?.error("overlay.preload.error", error, { preloadPath });
+    });
     overlayWindow.on("closed", () => {
       overlayWindow = undefined;
     });
+    overlayWindow.webContents.once("did-finish-load", () => {
+      logger?.info("overlay.didFinishLoad");
+    });
     await overlayWindow.loadFile(join(__dirname, "../renderer/index.html"), { query: { view: "overlay" } });
+    logger?.info("overlay.loadFile.done");
   }
 
   overlayWindow.setBounds({ width, height, x, y });
   overlayWindow.setAlwaysOnTop(true, "screen-saver");
   overlayWindow.show();
   logger?.info("overlay.show", {
+    candidateCount: result.candidates.length,
+    summaryCount: result.summaries.length,
+    generatedAt: result.generatedAt
+  });
+  logger?.info("overlay.result.send", {
     candidateCount: result.candidates.length,
     summaryCount: result.summaries.length,
     generatedAt: result.generatedAt
