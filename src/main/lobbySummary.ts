@@ -1,4 +1,4 @@
-import { bossGroupForVisibleEncounter, lostArkBibleEncounterGroups } from "./encounters.js";
+import { lostArkBibleEncounterGroups, matchVisibleEncounter, tokenizeVisibleEncounter } from "./encounters.js";
 import { summarizeCharacter } from "./summary.js";
 import type {
   CharacterLogsResult,
@@ -65,11 +65,12 @@ async function fetchEncounterAwareLogs(
 }
 
 export function resolveEncounter(visibleText: string): EncounterResolution {
-  const groupName = bossGroupForVisibleEncounter(visibleText);
+  const match = matchVisibleEncounter(visibleText);
+  const groupName = match?.groupName;
   const difficulty = parseDifficulty(visibleText);
 
   return {
-    visibleText,
+    visibleText: match ? formatResolvedVisibleText(match.alias, difficulty) : visibleText,
     groupName,
     difficulty,
     bosses: groupName ? lostArkBibleEncounterGroups[groupName] : []
@@ -77,12 +78,28 @@ export function resolveEncounter(visibleText: string): EncounterResolution {
 }
 
 function parseDifficulty(visibleText: string): string | undefined {
-  const value = visibleText.match(/\[\s*(normal|hard|nightmare|the\s+first)\s*\]/i)?.[1];
-  if (!value) return undefined;
+  const tokens = tokenizeVisibleEncounter(visibleText);
 
-  const normalized = value.replace(/\s+/g, " ").trim().toLowerCase();
-  if (normalized === "the first") return "The First";
-  return normalized[0].toUpperCase() + normalized.slice(1);
+  for (const token of tokens) {
+    if (token === "normal") return "Normal";
+    if (token === "hard") return "Hard";
+    if (token === "nightmare") return "Nightmare";
+  }
+
+  for (let index = 0; index < tokens.length - 1; index += 1) {
+    if (tokens[index] === "the" && tokens[index + 1] === "first") return "The First";
+  }
+
+  return undefined;
+}
+
+function formatResolvedVisibleText(alias: string, difficulty: string | undefined): string {
+  const title = titleCase(alias);
+  return difficulty ? `[${difficulty}] ${title}` : title;
+}
+
+function titleCase(value: string): string {
+  return value.replace(/\b\p{L}/gu, (letter) => letter.toLocaleUpperCase());
 }
 
 function uniqueNames(names: string[]): string[] {

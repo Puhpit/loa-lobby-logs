@@ -40,7 +40,7 @@ function searchResult(region: Region, name: string, resolvedFromSearch: string, 
 describe("resolveEncounter", () => {
   it("maps visible Lost Ark encounter labels to lostark.bible boss groups", () => {
     expect(resolveEncounter("[Hard] Fortress of Destruction")).toEqual({
-      visibleText: "[Hard] Fortress of Destruction",
+      visibleText: "[Hard] Fortress Of Destruction",
       groupName: "Armoche",
       difficulty: "Hard",
       bosses: ["Brelshaza, Ember in the Ashes", "Armoche, Sentinel of the Abyss"]
@@ -55,7 +55,7 @@ describe("resolveEncounter", () => {
       bosses: ["Death Incarnate Kazeros", "Archdemon Kazeros", "Abyss Lord Kazeros"]
     });
     expect(resolveEncounter("[Hard]Final Day")).toEqual({
-      visibleText: "[Hard]Final Day",
+      visibleText: "[Hard] Final Day",
       groupName: "Kazeros",
       difficulty: "Hard",
       bosses: ["Death Incarnate Kazeros", "Archdemon Kazeros", "Abyss Lord Kazeros"]
@@ -68,6 +68,25 @@ describe("resolveEncounter", () => {
       bosses: ["Mordum, the Abyssal Punisher", "Flash of Punishment", "Blossoming Fear, Naitreya", "Infernas"]
     });
     expect(resolveEncounter("[Hard] Fortress of Destruction").groupName).toBe("Armoche");
+  });
+
+  it("recovers noisy OCR encounter text with ordered token matching", () => {
+    expect(resolveEncounter("Hard]Final 1 Day Gate 1 1-2 hw lf dps")).toEqual({
+      visibleText: "[Hard] Final Day",
+      groupName: "Kazeros",
+      difficulty: "Hard",
+      bosses: ["Death Incarnate Kazeros", "Archdemon Kazeros", "Abyss Lord Kazeros"]
+    });
+    expect(resolveEncounter("Party 1 [Nightmare] Sanctum random Frost Recruiting Raid Group").groupName).toBe("Serca");
+  });
+
+  it("leaves tied encounter alias matches unresolved", () => {
+    expect(resolveEncounter("Final Sanctum Day Frost")).toEqual({
+      visibleText: "Final Sanctum Day Frost",
+      groupName: undefined,
+      difficulty: undefined,
+      bosses: []
+    });
   });
 
   it("leaves unknown encounter text as an unfiltered lookup", () => {
@@ -133,6 +152,7 @@ describe("summarizeLobbyCharacters", () => {
     expect(calls).toEqual(["filtered", "unfiltered"]);
     expect(summary.characters[0].flags).toContain("no-encounter-match");
     expect(summary.characters[0].bestPercentile).toBe(0.8);
+    expect(summary.characters[0].selectedLog?.id).toBe("recent");
   });
 
   it("marks individual scrape failures without failing the whole lobby summary", async () => {

@@ -1,11 +1,10 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type { AppApi, AppSettings, ReviewLobbyInput, ScanProgress, ScanResult } from "../shared/appTypes.js";
-import type { CalibrationConfig } from "./calibration.js";
+import type { SavedCalibrationConfig } from "./calibration.js";
 
 const api: AppApi = {
   reviewLobby: (input: ReviewLobbyInput) => ipcRenderer.invoke("review-lobby", input),
   startScan: () => ipcRenderer.invoke("start-scan"),
-  getLastResult: () => ipcRenderer.invoke("get-last-result"),
   onScanResultUpdated: (callback: (result: ScanResult) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, result: ScanResult) => callback(result);
     ipcRenderer.on("scan-result-updated", listener);
@@ -27,7 +26,7 @@ const api: AppApi = {
   chooseScreenshot: () => ipcRenderer.invoke("choose-screenshot"),
   getCalibration: () => ipcRenderer.invoke("get-calibration"),
   getCalibrationStatus: () => ipcRenderer.invoke("get-calibration-status"),
-  saveCalibration: (config: CalibrationConfig) => ipcRenderer.invoke("save-calibration", config),
+  saveCalibration: (config: SavedCalibrationConfig) => ipcRenderer.invoke("save-calibration", config),
   startCalibration: (target) => ipcRenderer.invoke("start-calibration", target),
   completeCalibration: (target, rect) => ipcRenderer.invoke("complete-calibration", target, rect),
   setAlwaysOnTop: (value: boolean) => ipcRenderer.invoke("set-always-on-top", value)

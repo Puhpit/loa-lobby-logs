@@ -12,20 +12,53 @@ const visibleEncounterAliases: Record<string, string> = {
   "sanctum of frost": "Serca"
 };
 
-export function bossGroupForVisibleEncounter(visibleText: string): string | undefined {
-  const normalized = normalizeVisibleEncounter(visibleText);
-
-  for (const [alias, group] of Object.entries(visibleEncounterAliases)) {
-    if (normalized.includes(alias)) return group;
-  }
-
-  return undefined;
+export interface VisibleEncounterMatch {
+  groupName: string;
+  alias: string;
 }
 
-function normalizeVisibleEncounter(value: string): string {
+export function bossGroupForVisibleEncounter(visibleText: string): string | undefined {
+  return matchVisibleEncounter(visibleText)?.groupName;
+}
+
+export function matchVisibleEncounter(visibleText: string): VisibleEncounterMatch | undefined {
+  const tokens = tokenizeVisibleEncounter(visibleText);
+  const matches = Object.entries(visibleEncounterAliases)
+    .map(([alias, groupName]) => {
+      const span = orderedTokenSpan(tokens, tokenizeVisibleEncounter(alias));
+      return span ? { alias, groupName, ...span } : undefined;
+    })
+    .filter((match): match is VisibleEncounterMatch & { start: number; end: number; span: number } => Boolean(match))
+    .sort((left, right) => left.span - right.span || left.start - right.start);
+
+  if (matches.length === 0) return undefined;
+  if (matches.length > 1 && matches[0].span === matches[1].span) return undefined;
+
+  return { groupName: matches[0].groupName, alias: matches[0].alias };
+}
+
+export function tokenizeVisibleEncounter(value: string): string[] {
   return value
     .toLowerCase()
-    .replace(/[\[\]]/g, " ")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
     .replace(/\s+/g, " ")
-    .trim();
+    .trim()
+    .split(" ")
+    .filter((token) => token && token !== "of" && !/^\d+$/.test(token));
+}
+
+function orderedTokenSpan(tokens: string[], aliasTokens: string[]): { start: number; end: number; span: number } | undefined {
+  let searchFrom = 0;
+  let start = -1;
+  let end = -1;
+
+  for (const aliasToken of aliasTokens) {
+    const index = tokens.indexOf(aliasToken, searchFrom);
+    if (index === -1) return undefined;
+    if (start === -1) start = index;
+    end = index;
+    searchFrom = index + 1;
+  }
+
+  return { start, end, span: end - start };
 }

@@ -69,6 +69,21 @@ describe("summarizeCharacter", () => {
     expect(summary.selectedLog?.id).toBe("hard-latest");
   });
 
+  it("selects matching Kazeros logs over newer Serca logs", () => {
+    const summary = summarizeCharacter(
+      "Fatalvalky",
+      [
+        log({ id: "newer-serca", boss: "Corvus Tul Rak", difficulty: "Hard", timestamp: 50, percentile: 0.99 }),
+        log({ id: "hard-kazeros", boss: "Death Incarnate Kazeros", difficulty: "Hard", timestamp: 30, percentile: 0.98 })
+      ],
+      { bosses: ["Death Incarnate Kazeros", "Archdemon Kazeros", "Abyss Lord Kazeros"], difficulty: "Hard" }
+    );
+
+    expect(summary.currentEncounterLogs.map((entry) => entry.id)).toEqual(["hard-kazeros"]);
+    expect(summary.selectedLog?.id).toBe("hard-kazeros");
+    expect(summary.flags).not.toContain("no-encounter-match");
+  });
+
   it("uses support display metrics for support specs", () => {
     const metrics = displayMetricsForLog(log({
       spec: "Desperate Salvation",
