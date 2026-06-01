@@ -101,6 +101,8 @@ Use npm start for Electron runtime checks when local GUI validation is relevant.
 
 Use `npm run package:win` only when packaging behavior or Windows distributable output is affected. Do not commit generated `dist/`, unpacked executables, `.tools/`, logs, screenshots, caches, or HAR files.
 
+When rebuilding the Windows portable executable locally, first check whether the existing portable app is running and locking `dist/LOA-Lobby-Logs-0.1.0-portable.exe`. If packaging fails in Electron Builder dependency collection, use the full local Node/npm paths above or prepend `C:\Program Files\nodejs` to `PATH` for the build process so Electron Builder can resolve `npm`.
+
 If local tooling is unavailable but GitHub Actions is configured, push a branch and use CI as the validation source, then inspect failures and iterate.
 
 ## Git and GitHub Workflow

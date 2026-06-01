@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
-import type { AppApi, AppSettings, ReviewLobbyInput, ScanResult } from "../shared/appTypes.js";
+import type { AppApi, AppSettings, ReviewLobbyInput, ScanProgress, ScanResult } from "../shared/appTypes.js";
 import type { CalibrationConfig } from "./calibration.js";
 
 const api: AppApi = {
@@ -11,8 +11,13 @@ const api: AppApi = {
     ipcRenderer.on("scan-result-updated", listener);
     return () => ipcRenderer.removeListener("scan-result-updated", listener);
   },
-  showLastResults: () => ipcRenderer.invoke("show-last-results"),
+  onScanProgressUpdated: (callback: (progress: ScanProgress) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, progress: ScanProgress) => callback(progress);
+    ipcRenderer.on("scan-progress-updated", listener);
+    return () => ipcRenderer.removeListener("scan-progress-updated", listener);
+  },
   dismissOverlay: () => ipcRenderer.invoke("dismiss-overlay"),
+  openSettings: () => ipcRenderer.invoke("open-settings"),
   getSettings: () => ipcRenderer.invoke("get-settings"),
   saveSettings: (settings: AppSettings) => ipcRenderer.invoke("save-settings", settings),
   openLogs: () => ipcRenderer.invoke("open-logs"),
@@ -21,6 +26,7 @@ const api: AppApi = {
   runScreenshotOcr: (screenshotPath: string) => ipcRenderer.invoke("run-screenshot-ocr", screenshotPath),
   chooseScreenshot: () => ipcRenderer.invoke("choose-screenshot"),
   getCalibration: () => ipcRenderer.invoke("get-calibration"),
+  getCalibrationStatus: () => ipcRenderer.invoke("get-calibration-status"),
   saveCalibration: (config: CalibrationConfig) => ipcRenderer.invoke("save-calibration", config),
   startCalibration: (target) => ipcRenderer.invoke("start-calibration", target),
   completeCalibration: (target, rect) => ipcRenderer.invoke("complete-calibration", target, rect),

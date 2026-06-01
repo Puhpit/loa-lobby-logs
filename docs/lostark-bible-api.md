@@ -150,6 +150,22 @@ HAR captures did not show an explicit in-game alias map. Character-log filters u
 
 `local/lostark.bible.5.har` confirmed the official lostark.bible Mordum group as `Mordum, the Abyssal Punisher`, `Flash of Punishment`, `Blossoming Fear, Naitreya`, and `Infernas`.
 
+Overlay gate chips are display-only labels for known boss names. They are manually maintained from user-verified encounter labels rather than derived from the lostark.bible log API:
+
+```ts
+{
+  "Witch of Agony, Serca": "G1",
+  "Corvus Tul Rak": "G2",
+  "Abyss Lord Kazeros": "G1",
+  "Death Incarnate Kazeros": "G2",
+  "Brelshaza, Ember in the Ashes": "G1",
+  "Armoche, Sentinel of the Abyss": "G2",
+  "Infernas": "G1",
+  "Blossoming Fear, Naitreya": "G2",
+  "Flash of Punishment": "G3"
+}
+```
+
 ## Search Endpoint
 
 The home-page search bar uses a SvelteKit remote endpoint:

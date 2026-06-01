@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { bootRenderer } from "../src/renderer/renderer.js";
-import type { AppApi, AppSettings, ScanResult } from "../src/shared/appTypes.js";
+import type { AppApi, AppSettings, ScanProgress, ScanResult } from "../src/shared/appTypes.js";
 
 class FakeElement {
   readonly listeners = new Map<string, Array<(event?: any) => unknown>>();
@@ -39,7 +39,7 @@ class FakeElement {
     this.html = value;
     this.children.length = 0;
 
-    for (const className of ["identity", "name", "meta", "encounter-tag", "flags", "error", "metric", "empty", "log-detail-row"]) {
+    for (const className of ["identity", "name", "meta", "encounter-tag", "metric", "empty", "log-detail-row"]) {
       if (!value.includes(`class="${className}`)) continue;
       const child = new FakeElement("div");
       child.className = className;
@@ -132,7 +132,11 @@ const overlayIds = [
   "overlayStatus",
   "overlayWarnings",
   "overlayResults",
-  "overlayLogPopover"
+  "overlayLogPopover",
+  "overlayProgress",
+  "overlayProgressTitle",
+  "overlayProgressMessage",
+  "openSettingsFromOverlay"
 ];
 
 const settingsIds = [
@@ -140,28 +144,16 @@ const settingsIds = [
   "calibrationView",
   "overlayView",
   "status",
-  "settingsResults",
   "scanNow",
-  "reviewLobby",
-  "screenshotPath",
-  "candidateCount",
-  "encounterSummary",
-  "updatedAt",
   "settingsMessage",
   "server",
   "scanHotkey",
   "captureMode",
   "overlayPosition",
   "saveSettings",
-  "showLastResults",
   "openLogs",
   "calibrationStatus",
-  "calibrateLobbyRegion",
-  "chooseScreenshot",
-  "encounter",
-  "manualNames",
-  "useOcr",
-  "pages"
+  "calibrateLobbyRegion"
 ];
 
 describe("renderer boot", () => {
@@ -198,9 +190,12 @@ describe("renderer boot", () => {
     expect(document.getElementById("overlayResults")!.children).toHaveLength(1);
     const row = document.getElementById("overlayResults")!.children[0];
     expect(row.querySelector(".name")?.textContent).toBe("Pepegami");
+    expect(row.querySelector(".meta")?.textContent).toContain("ilvl 1765.33");
     expect(row.innerHTML).toContain("nDPS/uDPS");
     expect(row.innerHTML).toContain("percentile-badge");
     expect(row.innerHTML).toContain(">99</b>");
+    expect(row.innerHTML).not.toContain("ocr-uncertain");
+    expect(row.innerHTML).not.toContain("scrape-failed");
     expect(row.innerHTML).not.toContain("log-details");
     expect(api.events.map((event) => event.event)).toContain("overlay.result.rendered");
   });
@@ -214,16 +209,35 @@ describe("renderer boot", () => {
     bootRenderer({ window: window as unknown as Window, document: document as unknown as Document });
     await flushPromises();
 
-    api.emitScanResult(scanResult());
+    api.emitScanResult(scanResult({ boss: "Abyss Lord Kazeros", difficulty: "The First" }));
     await flushPromises();
     await document.getElementById("overlayResults")!.children[0].trigger("pointerenter");
 
     const popover = document.getElementById("overlayLogPopover")!;
     expect(popover.hidden).toBe(false);
-    expect(popover.innerHTML).toContain("Hard");
-    expect(popover.innerHTML).toContain("Dark Baratron");
+    expect(popover.innerHTML).toContain("Encounter");
+    expect(popover.innerHTML).toContain("Percentile");
+    expect(popover.innerHTML).toContain("The First");
+    expect(popover.innerHTML).toContain("G1");
+    expect(popover.innerHTML).toContain("Abyss Lord Kazeros");
     expect(popover.innerHTML).toContain("306.5M");
     expect(document.getElementById("overlayResults")!.children[0].innerHTML).not.toContain("log-detail-row");
+  });
+
+  it("renders support popover percentiles with lostark.bible separators", async () => {
+    const document = new FakeDocument(overlayIds);
+    const window = new FakeWindow({ href: "app://index.html?view=overlay", search: "?view=overlay" });
+    const api = createApi();
+    window.loaLobbyLogs = api;
+
+    bootRenderer({ window: window as unknown as Window, document: document as unknown as Document });
+    await flushPromises();
+
+    api.emitScanResult(scanResult({ role: "support", percentile: 0.95, contributionPercentile: 0.33 }));
+    await flushPromises();
+    await document.getElementById("overlayResults")!.children[0].trigger("pointerenter");
+
+    expect(document.getElementById("overlayLogPopover")!.innerHTML).toContain("33 | 95");
   });
 
   it("wires settings buttons to their expected APIs", async () => {
@@ -233,9 +247,6 @@ describe("renderer boot", () => {
     window.loaLobbyLogs = api;
     document.getElementById("server")!.value = "NA";
     document.getElementById("scanHotkey")!.value = "Ctrl+Alt+D";
-    document.getElementById("encounter")!.value = "[Normal]Dark Baratron";
-    document.getElementById("manualNames")!.value = "Pepegami";
-    document.getElementById("pages")!.value = "3";
 
     bootRenderer({ window: window as unknown as Window, document: document as unknown as Document });
     await flushPromises();
@@ -243,15 +254,35 @@ describe("renderer boot", () => {
 
     await document.getElementById("saveSettings")!.trigger("click");
     await document.getElementById("scanNow")!.trigger("click");
-    await document.getElementById("reviewLobby")!.trigger("click");
 
     expect(api.saveSettingsCalls).toBe(1);
     expect(api.savedSettings?.overlayPosition).toBe("right");
     expect(api.startScanCalls).toBe(1);
-    expect(api.reviewLobbyCalls).toBe(1);
+    expect(document.getElementById("calibrationStatus")!.textContent).toBe("Lobby region: 0,0 1x1");
     expect(api.events).toContainEqual({ event: "button.click", data: { action: "settings.save" } });
     expect(api.events).toContainEqual({ event: "button.click", data: { action: "settings.scanNow" } });
-    expect(api.events).toContainEqual({ event: "button.click", data: { action: "settings.reviewLobby" } });
+  });
+
+  it("renders scan progress and opens settings from calibration warning", async () => {
+    const document = new FakeDocument(overlayIds);
+    const window = new FakeWindow({ href: "app://index.html?view=overlay", search: "?view=overlay" });
+    const api = createApi();
+    window.loaLobbyLogs = api;
+
+    bootRenderer({ window: window as unknown as Window, document: document as unknown as Document });
+    await flushPromises();
+
+    api.emitScanProgress({
+      stage: "needs-calibration",
+      message: "Calibration is not set."
+    });
+    await document.getElementById("openSettingsFromOverlay")!.trigger("click");
+
+    expect(document.getElementById("overlayProgress")!.hidden).toBe(false);
+    expect(document.getElementById("overlayProgressTitle")!.textContent).toBe("Calibration Required");
+    expect(document.getElementById("overlayProgressMessage")!.textContent).toBe("Calibration is not set.");
+    expect(document.getElementById("openSettingsFromOverlay")!.hidden).toBe(false);
+    expect(api.openSettingsCalls).toBe(1);
   });
 });
 
@@ -261,11 +292,14 @@ function createApi(): AppApi & {
   saveSettingsCalls: number;
   startScanCalls: number;
   reviewLobbyCalls: number;
+  openSettingsCalls: number;
   savedSettings?: AppSettings;
   emitScanResult(result: ScanResult): void;
+  emitScanProgress(progress: ScanProgress): void;
 } {
   const events: Array<{ event: string; data?: Record<string, unknown> }> = [];
   const listeners: Array<(result: ScanResult) => void> = [];
+  const progressListeners: Array<(progress: ScanProgress) => void> = [];
   const settings: AppSettings = {
     server: "NA",
     scanHotkey: "Ctrl+Alt+D",
@@ -279,14 +313,17 @@ function createApi(): AppApi & {
     saveSettingsCalls: number;
     startScanCalls: number;
     reviewLobbyCalls: number;
+    openSettingsCalls: number;
     savedSettings?: AppSettings;
     emitScanResult(result: ScanResult): void;
+    emitScanProgress(progress: ScanProgress): void;
   } = {
     events,
     dismissOverlayCalls: 0,
     saveSettingsCalls: 0,
     startScanCalls: 0,
     reviewLobbyCalls: 0,
+    openSettingsCalls: 0,
     reviewLobby: async () => {
       api.reviewLobbyCalls += 1;
       return scanResult();
@@ -300,9 +337,15 @@ function createApi(): AppApi & {
       listeners.push(callback);
       return () => undefined;
     },
-    showLastResults: async () => true,
+    onScanProgressUpdated: (callback) => {
+      progressListeners.push(callback);
+      return () => undefined;
+    },
     dismissOverlay: async () => {
       api.dismissOverlayCalls += 1;
+    },
+    openSettings: async () => {
+      api.openSettingsCalls += 1;
     },
     getSettings: async () => settings,
     saveSettings: async (nextSettings) => {
@@ -327,30 +370,54 @@ function createApi(): AppApi & {
       memberList: { x: 0, y: 0, width: 1, height: 1 },
       selectedLobbyRow: { x: 0, y: 0, width: 1, height: 1 }
     }),
+    getCalibrationStatus: async () => ({
+      configured: true,
+      config: {
+        version: 1,
+        encounterTitle: { x: 0, y: 0, width: 1, height: 1 },
+        applicantList: { x: 0, y: 0, width: 1, height: 1 },
+        memberList: { x: 0, y: 0, width: 1, height: 1 },
+        selectedLobbyRow: { x: 0, y: 0, width: 1, height: 1 }
+      }
+    }),
     saveCalibration: async (config) => config,
     startCalibration: async () => undefined,
     completeCalibration: async () => undefined,
     setAlwaysOnTop: async () => true,
     emitScanResult: (result) => {
       for (const listener of listeners) listener(result);
+    },
+    emitScanProgress: (progress) => {
+      for (const listener of progressListeners) listener(progress);
     }
   };
 
   return api;
 }
 
-function scanResult(): ScanResult {
+function scanResult(options: {
+  boss?: string;
+  difficulty?: string;
+  role?: "dps" | "support";
+  percentile?: number;
+  contributionPercentile?: number;
+} = {}): ScanResult {
+  const role = options.role ?? "dps";
   const selectedLog = {
     id: "log-1",
     name: "Pepegami",
-    boss: "Dark Baratron",
-    difficulty: "Hard",
+    boss: options.boss ?? "Dark Baratron",
+    difficulty: options.difficulty ?? "Hard",
     dps: 1_077_347_781,
     ndps: 306_477_091,
+    rdps: role === "support" ? 491000 : undefined,
+    rContribution: role === "support" ? 0.491 : undefined,
+    buffs: role === "support" ? [0.97, 0.99, 0.94, 0.41] : undefined,
     className: "Sorceress",
-    spec: "Igniter",
-    gearScore: 1765,
-    percentile: 0.99,
+    spec: role === "support" ? "Full Bloom" : "Igniter",
+    gearScore: 1765.329950546875,
+    percentile: options.percentile ?? 0.99,
+    contributionPercentile: options.contributionPercentile,
     duration: 480,
     timestamp: Date.now(),
     isBus: false,
@@ -370,14 +437,23 @@ function scanResult(): ScanResult {
       name: "Pepegami",
       className: "Sorceress",
       spec: "Igniter",
-      gearScore: 1765,
+      gearScore: 1765.329950546875,
       selectedLog,
       recentEncounterLogs: [selectedLog],
       displayMetrics: {
-        role: "dps",
-        percentileBadges: [{ value: 0.99, label: "99", textColor: "#FF69B4", backgroundColor: "#ee59a5" }],
-        performance: [{ label: "DPS", value: "1.1B" }],
-        ndps: { label: "nDPS", marker: "n", value: "306.5M" }
+        role,
+        percentileBadges: role === "support"
+          ? [
+            { value: options.contributionPercentile ?? 0.33, label: "33", textColor: "#3dd351", backgroundColor: "#3dd351" },
+            { value: options.percentile ?? 0.95, label: "95", textColor: "#FFA441", backgroundColor: "#ff8000" }
+          ]
+          : [{ value: 0.99, label: "99", textColor: "#FF69B4", backgroundColor: "#ee59a5" }],
+        performance: role === "support"
+          ? [{ label: "AP", value: "97" }, { label: "Brand", value: "99" }, { label: "Identity", value: "94" }, { label: "T", value: "41" }]
+          : [{ label: "DPS", value: "1.1B" }],
+        ndps: role === "support"
+          ? { label: "rDPS", marker: "r", value: "49.1%" }
+          : { label: "nDPS", marker: "n", value: "306.5M" }
       },
       currentEncounterLogs: [],
       recentOtherLogs: [],
@@ -387,7 +463,7 @@ function scanResult(): ScanResult {
       medianDps: 900_000_000,
       medianNdps: 306_477_091,
       latestTimestamp: 1,
-      flags: []
+      flags: ["ocr-uncertain", "scrape-failed"]
     }],
     generatedAt: "2026-05-31T04:41:02.660Z",
     warnings: []

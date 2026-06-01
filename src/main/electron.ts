@@ -19,7 +19,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
-import { calibrationTargets, defaultCalibration, loadCalibrationConfig, saveCalibrationConfig } from "./calibration.js";
+import { calibrationTargets, defaultCalibration, loadCalibrationConfig, loadCalibrationStatus, saveCalibrationConfig } from "./calibration.js";
 import { createDiagnosticsLogger, errorMessage, type DiagnosticsLogger } from "./diagnostics.js";
 import { normalizeHotkey } from "./hotkey.js";
 import { getEncounterTextFromScreenshot, ScreenshotCharacterSource } from "./ocrCharacterSource.js";
@@ -27,7 +27,7 @@ import { reviewLobby } from "./appPipeline.js";
 import { overlayBounds } from "./overlayWindow.js";
 import { defaultSettings, loadSettings, saveSettings } from "./settings.js";
 import type { CalibrationConfig, CalibrationTarget } from "./calibration.js";
-import type { AppSettings, ReviewLobbyInput, ScanResult } from "../shared/appTypes.js";
+import type { AppSettings, ReviewLobbyInput, ScanProgress, ScanProgressStage, ScanResult } from "../shared/appTypes.js";
 import type { CharacterCandidate, OcrSourceMode, Rect } from "../shared/types.js";
 
 const execFileAsync = promisify(execFile);
@@ -46,7 +46,7 @@ let pendingCalibration: {
 let tray: Tray | undefined;
 let currentSettings: AppSettings = defaultSettings;
 let lastScanResult: ScanResult | undefined;
-let scanInFlight: Promise<ScanResult> | undefined;
+let scanInFlight: Promise<ScanResult | undefined> | undefined;
 let isQuitting = false;
 let logger: DiagnosticsLogger | undefined;
 let logDirectory = "";
@@ -106,11 +106,6 @@ function registerIpc(): void {
 
   ipcMain.handle("start-scan", async () => runScan());
   ipcMain.handle("get-last-result", async () => lastScanResult);
-  ipcMain.handle("show-last-results", async () => {
-    if (!lastScanResult) return false;
-    await showOverlayWindow(lastScanResult);
-    return true;
-  });
   ipcMain.handle("dismiss-overlay", async () => {
     logger?.info("overlay.dismiss", {
       hasWindow: Boolean(overlayWindow),
@@ -118,6 +113,9 @@ function registerIpc(): void {
     });
     overlayWindow?.hide();
     return Boolean(overlayWindow && !overlayWindow.isVisible());
+  });
+  ipcMain.handle("open-settings", async () => {
+    await showSettingsWindow();
   });
 
   ipcMain.handle("open-logs", async () => {
@@ -143,6 +141,7 @@ function registerIpc(): void {
   });
 
   ipcMain.handle("get-calibration", async () => loadCalibrationConfig(calibrationPath()));
+  ipcMain.handle("get-calibration-status", async () => loadCalibrationStatus(calibrationPath()));
 
   ipcMain.handle("save-calibration", async (_event, config: CalibrationConfig) => {
     await saveCalibrationConfig(calibrationPath(), config);
@@ -189,8 +188,7 @@ function createTray(): void {
       void runScan();
     } },
     { label: "Settings", click: () => void showSettingsWindow() },
-    { label: "Show Last Results", enabled: Boolean(lastScanResult), click: () => void showOverlayWindow(lastScanResult) },
-    { label: "Open Logs", click: () => void shell.openPath(logDirectory) },
+    { label: "Open App Logs", click: () => void shell.openPath(logDirectory) },
     { type: "separator" },
     {
       label: "Quit",
@@ -216,13 +214,13 @@ async function showSettingsWindow(): Promise<void> {
   }
 
   settingsWindow = new BrowserWindow({
-    width: 760,
-    height: 640,
+    width: 660,
+    height: 520,
     minWidth: 560,
-    minHeight: 420,
+    minHeight: 460,
     title: "LOA Lobby Logs Settings",
     show: false,
-    backgroundColor: "#101417",
+    backgroundColor: "#0a0a0a",
     webPreferences: {
       preload: join(__dirname, "preload.cjs"),
       contextIsolation: true,
@@ -247,9 +245,7 @@ async function showSettingsWindow(): Promise<void> {
   settingsWindow.show();
 }
 
-async function showOverlayWindow(result: ScanResult | undefined): Promise<void> {
-  if (!result) return;
-
+async function ensureOverlayWindow(): Promise<BrowserWindow> {
   const primaryDisplay = screen.getPrimaryDisplay();
   const bounds = overlayBounds(primaryDisplay.workArea, currentSettings.overlayPosition);
   const { width, height, x, y } = bounds;
@@ -290,6 +286,11 @@ async function showOverlayWindow(result: ScanResult | undefined): Promise<void> 
   overlayWindow.setBounds({ width, height, x, y });
   overlayWindow.setAlwaysOnTop(true, "screen-saver");
   overlayWindow.show();
+  return overlayWindow;
+}
+
+async function showOverlayWindow(result: ScanResult): Promise<void> {
+  const window = await ensureOverlayWindow();
   logger?.info("overlay.show", {
     candidateCount: result.candidates.length,
     summaryCount: result.summaries.length,
@@ -300,7 +301,17 @@ async function showOverlayWindow(result: ScanResult | undefined): Promise<void> 
     summaryCount: result.summaries.length,
     generatedAt: result.generatedAt
   });
-  overlayWindow.webContents.send("scan-result-updated", result);
+  window.webContents.send("scan-result-updated", result);
+}
+
+async function showOverlayProgress(progress: ScanProgress): Promise<void> {
+  const window = await ensureOverlayWindow();
+  logger?.info("scan.progress", { ...progress });
+  window.webContents.send("scan-progress-updated", progress);
+}
+
+async function emitScanProgress(stage: ScanProgressStage, message: string, scanId?: string): Promise<void> {
+  await showOverlayProgress({ stage, message, scanId });
 }
 
 async function startCalibration(target: CalibrationTarget): Promise<CalibrationConfig | undefined> {
@@ -430,15 +441,20 @@ function registerScanHotkey(hotkey: string): void {
   }
 }
 
-async function runScan(): Promise<ScanResult> {
+async function runScan(): Promise<ScanResult | undefined> {
   if (scanInFlight) return scanInFlight;
 
   scanInFlight = runScanInternal()
     .then(async (result) => {
+      if (!result) return undefined;
       lastScanResult = result;
       createTray();
       await showOverlayWindow(result);
       return result;
+    })
+    .catch(async (error) => {
+      await emitScanProgress("error", errorMessage(error));
+      throw error;
     })
     .finally(() => {
       scanInFlight = undefined;
@@ -447,13 +463,27 @@ async function runScan(): Promise<ScanResult> {
   return scanInFlight;
 }
 
-async function runScanInternal(): Promise<ScanResult> {
+async function runScanInternal(): Promise<ScanResult | undefined> {
   const scanId = `scan-${Date.now()}`;
   const warnings: string[] = [];
   logger?.info("scan.start", { scanId });
-  const calibration = await loadCalibrationConfig(calibrationPath()).catch(() => defaultCalibration);
+  await emitScanProgress("capturing", "Preparing scan...", scanId);
+  const calibrationStatus = await loadCalibrationStatus(calibrationPath()).catch((error) => {
+    logger?.error("scan.calibration.status.error", error, { scanId });
+    return { configured: false, config: defaultCalibration };
+  });
+
+  if (!calibrationStatus.configured) {
+    await emitScanProgress("needs-calibration", "Calibration is not set. Open settings and calibrate the lobby region before scanning.", scanId);
+    logger?.warn("scan.blocked.needsCalibration", { scanId });
+    return undefined;
+  }
+
+  const calibration = calibrationStatus.config;
   logger?.info("scan.calibration", { scanId, calibration });
-  const capture = await captureForegroundLostArkDisplay(warnings);
+  await emitScanProgress("capturing", "Taking screenshot...", scanId);
+  const capture = await captureForegroundLostArkDisplay();
+  await emitScanProgress("ocr-encounter", "Reading encounter...", scanId);
   const visibleEncounterText = await getEncounterTextFromScreenshot(
     capture.screenshotPath,
     calibration,
@@ -471,12 +501,14 @@ async function runScanInternal(): Promise<ScanResult> {
     cropRect: calibration.encounterTitle,
     rawText: visibleEncounterText
   });
+  await emitScanProgress("ocr-characters", "Reading character names...", scanId);
   const candidates = await scanRightSideCandidates(capture.screenshotPath, calibration, scanId).catch((error) => {
     warnings.push(`Character OCR failed: ${error instanceof Error ? error.message : String(error)}`);
     logger?.error("ocr.characters.error", error, { scanId, screenshotPath: capture.screenshotPath });
     return [];
   });
 
+  await emitScanProgress("fetching-logs", "Pulling public logs...", scanId);
   const output = await reviewLobby({
     region: currentSettings.server,
     visibleEncounterText,
@@ -497,6 +529,7 @@ async function runScanInternal(): Promise<ScanResult> {
     warnings: [...warnings, ...capture.warnings],
     screenshotPath: capture.screenshotPath
   };
+  await emitScanProgress("rendering", "Rendering results...", scanId);
   logger?.info("scan.done", {
     scanId,
     warnings: result.warnings,
@@ -504,10 +537,11 @@ async function runScanInternal(): Promise<ScanResult> {
     candidateCount: result.candidates.length,
     summaryCount: result.summaries.length
   });
+  await emitScanProgress("done", "Scan complete", scanId);
   return result;
 }
 
-async function captureForegroundLostArkDisplay(warnings: string[]): Promise<{ screenshotPath: string; warnings: string[] }> {
+async function captureForegroundLostArkDisplay(): Promise<{ screenshotPath: string; warnings: string[] }> {
   const foreground = await getForegroundWindowInfo().catch(() => undefined);
   const displays = screen.getAllDisplays();
   let display = screen.getPrimaryDisplay();
@@ -516,7 +550,7 @@ async function captureForegroundLostArkDisplay(warnings: string[]): Promise<{ sc
   if (foreground?.rect && isLostArkWindow(foreground.title, foreground.processName)) {
     display = displayContainingRect(displays, foreground.rect) ?? display;
   } else {
-    warnings.push("Lost Ark was not detected as the foreground window; captured the primary display.");
+    logger?.info("capture.foreground.fallbackPrimaryDisplay", { foreground });
   }
 
   const source = await sourceForDisplay(display);
@@ -538,7 +572,7 @@ async function captureForegroundLostArkDisplay(warnings: string[]): Promise<{ sc
     screenshotPath
   });
 
-  return { screenshotPath, warnings };
+  return { screenshotPath, warnings: [] };
 }
 
 async function sourceForDisplay(display: Display): Promise<Electron.DesktopCapturerSource> {
@@ -623,8 +657,9 @@ try { $processName = (Get-Process -Id $pidValue).ProcessName } catch {}
 }
 
 function isLostArkWindow(title: string, processName: string): boolean {
+  const normalizedProcessName = processName.trim().toLowerCase();
   const value = `${title} ${processName}`.toLowerCase();
-  return value.includes("lost ark") || value.includes("lostark");
+  return normalizedProcessName === "lostark" || value.includes("lost ark") || value.includes("lostark");
 }
 
 function displayContainingRect(displays: Display[], rect: Rect): Display | undefined {

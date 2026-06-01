@@ -10,6 +10,11 @@ export interface CalibrationConfig {
   selectedLobbyRow: Rect;
 }
 
+export interface CalibrationStatus {
+  configured: boolean;
+  config: CalibrationConfig;
+}
+
 export type CalibrationRectKey = Exclude<keyof CalibrationConfig, "version">;
 export type CalibrationTarget = CalibrationRectKey | "lobbyRegion";
 
@@ -56,6 +61,20 @@ export async function loadCalibrationConfig(path: string): Promise<CalibrationCo
     return validateCalibrationConfig(JSON.parse(await readFile(path, "utf8")));
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return defaultCalibration;
+    throw error;
+  }
+}
+
+export async function loadCalibrationStatus(path: string): Promise<CalibrationStatus> {
+  try {
+    return {
+      configured: true,
+      config: validateCalibrationConfig(JSON.parse(await readFile(path, "utf8")))
+    };
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return { configured: false, config: defaultCalibration };
+    }
     throw error;
   }
 }
