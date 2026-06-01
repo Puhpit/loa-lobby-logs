@@ -19,16 +19,23 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
-import { calibrationTargets, defaultCalibration, loadCalibrationConfig, loadCalibrationStatus, saveCalibrationConfig } from "./calibration.js";
+import {
+  calibrationTargets,
+  emptyCalibration,
+  loadCalibrationConfig,
+  loadCalibrationStatus,
+  loadSavedCalibrationConfig,
+  saveCalibrationConfig
+} from "./calibration.js";
 import { createDiagnosticsLogger, errorMessage, type DiagnosticsLogger } from "./diagnostics.js";
 import { normalizeHotkey } from "./hotkey.js";
 import { getEncounterTextFromScreenshot, ScreenshotCharacterSource } from "./ocrCharacterSource.js";
 import { reviewLobby } from "./appPipeline.js";
 import { overlayBounds } from "./overlayWindow.js";
 import { defaultSettings, loadSettings, saveSettings } from "./settings.js";
-import type { CalibrationConfig, CalibrationTarget } from "./calibration.js";
+import type { CalibrationConfig, CalibrationTarget, SavedCalibrationConfig } from "./calibration.js";
 import type { AppSettings, ReviewLobbyInput, ScanProgress, ScanProgressStage, ScanResult } from "../shared/appTypes.js";
-import type { CharacterCandidate, OcrSourceMode, Rect } from "../shared/types.js";
+import type { CharacterCandidate, Rect } from "../shared/types.js";
 
 const execFileAsync = promisify(execFile);
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -41,11 +48,10 @@ let calibrationWindow: BrowserWindow | undefined;
 let pendingCalibration: {
   target: CalibrationTarget;
   display: Display;
-  resolve: (config: CalibrationConfig | undefined) => void;
+  resolve: (config: SavedCalibrationConfig | undefined) => void;
 } | undefined;
 let tray: Tray | undefined;
 let currentSettings: AppSettings = defaultSettings;
-let lastScanResult: ScanResult | undefined;
 let scanInFlight: Promise<ScanResult | undefined> | undefined;
 let isQuitting = false;
 let logger: DiagnosticsLogger | undefined;
@@ -105,7 +111,6 @@ function registerIpc(): void {
   });
 
   ipcMain.handle("start-scan", async () => runScan());
-  ipcMain.handle("get-last-result", async () => lastScanResult);
   ipcMain.handle("dismiss-overlay", async () => {
     logger?.info("overlay.dismiss", {
       hasWindow: Boolean(overlayWindow),
@@ -140,10 +145,10 @@ function registerIpc(): void {
     logger?.error(`renderer.${event}`, data, data);
   });
 
-  ipcMain.handle("get-calibration", async () => loadCalibrationConfig(calibrationPath()));
+  ipcMain.handle("get-calibration", async () => loadSavedCalibrationConfig(calibrationPath()));
   ipcMain.handle("get-calibration-status", async () => loadCalibrationStatus(calibrationPath()));
 
-  ipcMain.handle("save-calibration", async (_event, config: CalibrationConfig) => {
+  ipcMain.handle("save-calibration", async (_event, config: SavedCalibrationConfig) => {
     await saveCalibrationConfig(calibrationPath(), config);
     return config;
   });
@@ -160,7 +165,7 @@ function registerIpc(): void {
   });
 
   ipcMain.handle("review-lobby", async (_event, input: ReviewLobbyInput) => {
-    const calibration = await loadCalibrationConfig(calibrationPath()).catch(() => defaultCalibration);
+    const calibration = await loadCalibrationConfig(calibrationPath()).catch(() => undefined);
     const scanId = `manual-${Date.now()}`;
     return reviewLobby(input, {
       userDataPath: app.getPath("userData"),
@@ -215,9 +220,9 @@ async function showSettingsWindow(): Promise<void> {
 
   settingsWindow = new BrowserWindow({
     width: 660,
-    height: 520,
+    height: 440,
     minWidth: 560,
-    minHeight: 460,
+    minHeight: 400,
     title: "LOA Lobby Logs Settings",
     show: false,
     backgroundColor: "#0a0a0a",
@@ -314,7 +319,7 @@ async function emitScanProgress(stage: ScanProgressStage, message: string, scanI
   await showOverlayProgress({ stage, message, scanId });
 }
 
-async function startCalibration(target: CalibrationTarget): Promise<CalibrationConfig | undefined> {
+async function startCalibration(target: CalibrationTarget): Promise<SavedCalibrationConfig | undefined> {
   if (!calibrationTargets.includes(target)) {
     throw new Error(`Unknown calibration target ${String(target)}`);
   }
@@ -382,17 +387,9 @@ async function completeCalibration(target: CalibrationTarget, rect?: Rect): Prom
     return;
   }
 
-  const config = await loadCalibrationConfig(calibrationPath()).catch(() => defaultCalibration);
+  const config = await loadSavedCalibrationConfig(calibrationPath()).catch(() => emptyCalibration);
   const scaledRect = rectForDisplayScale(rect, pending.display);
-  const nextConfig = target === "lobbyRegion"
-    ? {
-        ...config,
-        encounterTitle: scaledRect,
-        applicantList: scaledRect,
-        memberList: scaledRect,
-        selectedLobbyRow: scaledRect
-      }
-    : { ...config, [target]: scaledRect };
+  const nextConfig = { ...config, [target]: scaledRect };
   await saveCalibrationConfig(calibrationPath(), nextConfig);
   logger?.info("calibration.saved", {
     target,
@@ -447,7 +444,6 @@ async function runScan(): Promise<ScanResult | undefined> {
   scanInFlight = runScanInternal()
     .then(async (result) => {
       if (!result) return undefined;
-      lastScanResult = result;
       createTray();
       await showOverlayWindow(result);
       return result;
@@ -470,16 +466,16 @@ async function runScanInternal(): Promise<ScanResult | undefined> {
   await emitScanProgress("capturing", "Preparing scan...", scanId);
   const calibrationStatus = await loadCalibrationStatus(calibrationPath()).catch((error) => {
     logger?.error("scan.calibration.status.error", error, { scanId });
-    return { configured: false, config: defaultCalibration };
+    return { configured: false, config: emptyCalibration, zones: { encounterTitle: false, characterList: false } };
   });
 
   if (!calibrationStatus.configured) {
-    await emitScanProgress("needs-calibration", "Calibration is not set. Open settings and calibrate the lobby region before scanning.", scanId);
+    await emitScanProgress("needs-calibration", "Calibration is not set. Open settings and calibrate the encounter title and character list before scanning.", scanId);
     logger?.warn("scan.blocked.needsCalibration", { scanId });
     return undefined;
   }
 
-  const calibration = calibrationStatus.config;
+  const calibration = await loadCalibrationConfig(calibrationPath());
   logger?.info("scan.calibration", { scanId, calibration });
   await emitScanProgress("capturing", "Taking screenshot...", scanId);
   const capture = await captureForegroundLostArkDisplay();
@@ -587,14 +583,9 @@ async function sourceForDisplay(display: Display): Promise<Electron.DesktopCaptu
 }
 
 async function scanRightSideCandidates(imagePath: string, calibration: CalibrationConfig, scanId: string): Promise<CharacterCandidate[]> {
-  const modes: OcrSourceMode[] = ["applicant-list", "other-party-selected-lobby", "own-recruitment-lobby"];
-  const groups = await Promise.all(
-    modes.map((sourceMode) =>
-      new ScreenshotCharacterSource({ imagePath, calibration, sourceMode, logger, scanId }).getVisibleApplicants()
-    )
+  const candidates = dedupeCandidatesInScreenOrder(
+    await new ScreenshotCharacterSource({ imagePath, calibration, sourceMode: "character-list", logger, scanId }).getVisibleApplicants()
   );
-
-  const candidates = dedupeCandidatesInScreenOrder(groups.flat());
   logger?.info("ocr.characters.done", {
     scanId,
     imagePath,

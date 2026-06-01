@@ -1,5 +1,5 @@
 import type { CharacterCandidate, CharacterSource, OcrSourceMode, Rect } from "../shared/types.js";
-import { cropRectForMode, type CalibrationConfig } from "./calibration.js";
+import type { CalibrationConfig } from "./calibration.js";
 import type { DiagnosticsLogger } from "./diagnostics.js";
 import { dedupeCharacterCandidates, normalizeOcrNames } from "./nameNormalization.js";
 
@@ -48,12 +48,12 @@ export class ScreenshotCharacterSource implements CharacterSource {
   private readonly sourceMode: OcrSourceMode;
 
   constructor(private readonly options: ScreenshotCharacterSourceOptions) {
-    this.sourceMode = options.sourceMode ?? "applicant-list";
+    this.sourceMode = options.sourceMode ?? "character-list";
   }
 
   async getVisibleApplicants(): Promise<CharacterCandidate[]> {
     const tesseract = this.options.tesseract ?? (await loadTesseract());
-    const cropRect = cropRectForMode(this.options.calibration, this.sourceMode);
+    const cropRect = this.options.calibration.characterList;
     const result = await recognizeText(tesseract, this.options.imagePath, cropRect);
 
     const candidates = candidatesFromOcrText(result.data.text, result.data.confidence, this.sourceMode, cropRect);
@@ -82,24 +82,18 @@ export async function getEncounterTextFromScreenshot(
   scanId?: string
 ): Promise<string> {
   const engine = tesseract ?? (await loadTesseract());
-  const cropRects = encounterFallbackRects(calibration.encounterTitle);
-
-  for (const cropRect of cropRects) {
-    const result = await recognizeText(engine, imagePath, cropRect, false);
-    const rawText = result.data.text.replace(/\s+/g, " ").trim();
-    logger?.info("ocr.encounter.attempt", {
-      scanId,
-      imagePath,
-      cropRect,
-      confidence: result.data.confidence,
-      rawText: result.data.text,
-      normalizedText: rawText
-    });
-
-    if (rawText) return rawText;
-  }
-
-  return "";
+  const cropRect = calibration.encounterTitle;
+  const result = await recognizeText(engine, imagePath, cropRect, false);
+  const rawText = result.data.text.replace(/\s+/g, " ").trim();
+  logger?.info("ocr.encounter", {
+    scanId,
+    imagePath,
+    cropRect,
+    confidence: result.data.confidence,
+    rawText: result.data.text,
+    normalizedText: rawText
+  });
+  return rawText;
 }
 
 export function candidatesFromOcrText(
@@ -155,14 +149,6 @@ async function recognizeText(
       load_freq_dawg: "false"
     } : {})
   });
-}
-
-function encounterFallbackRects(rect: Rect): Rect[] {
-  const offsets = [0, -30, 30];
-  return offsets.map((offset) => ({
-    ...rect,
-    y: Math.max(0, rect.y + offset)
-  }));
 }
 
 function toTesseractRect(rect: Rect): TesseractRect {

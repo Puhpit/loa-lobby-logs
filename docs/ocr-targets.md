@@ -2,7 +2,16 @@
 
 Known UI fixtures are 3840x1080 Lost Ark screenshots in English. Local screenshot fixtures live under ignored `local/`.
 
-## Modes
+## Calibrated Regions
+
+The app currently uses manual calibration instead of visual anchor detection. Users must save two screenshot-pixel rectangles:
+
+- `Encounter Title`: the selected encounter/lobby encounter title only.
+- `Character List`: the visible right-side party/applicant character rows only.
+
+Old single-rectangle calibration files are intentionally invalid. Recalibrate both required regions after upgrading from the old flow.
+
+## UI Fixtures
 
 ### Applicant List
 
@@ -50,7 +59,7 @@ Primary OCR targets:
 - party member names in bottom slots;
 - party member names in the right panel.
 
-## Detection Strategy
+## Future Detection Strategy
 
 The Find Party window can move. Avoid fixed screen coordinates.
 
@@ -68,16 +77,13 @@ Use a two-step crop strategy:
    - selected lobby row in the center list;
    - party member rows.
 
-Add a manual calibration fallback that lets the user drag rectangles for:
-
-- encounter title;
-- applicant list;
-- member list;
-- selected lobby row.
+Manual calibration currently lets the user drag only the encounter title and character list rectangles.
 
 ## OCR Output Rules
 
 - Accept high-confidence character names automatically.
-- Filter known UI labels before log lookup, including difficulty labels, encounter words, and server/world names that can otherwise pass the character-name pattern.
+- Filter exact normalized recruitment UI tokens and current Lost Ark world/server names before log lookup: `applicant`, `details`, `group`, `lobby`, `member`, `party`, `raid`, `rec`, `recr`, `recrui`, `recruit`, `recruiti`, `recruiting`, `selected`, `settings`, `view`, `arcturus`, `balthorr`, `brelshaza`, `elpon`, `gienah`, `inanna`, `luterra`, `luttera`, `nineveh`, `ortuus`, `ratik`, `thaemine`, and `vairgrys`.
+- Do not filter difficulty or encounter words such as `first`, `hard`, `normal`, `nightmare`, `gate`, `kazeros`, `serca`, `armoche`, or `mordum`.
+- Resolve encounter title OCR by tokenizing text, dropping standalone numeric noise, and matching known encounter aliases by ordered token coverage. Difficulty is detected from known difficulty tokens and does not require brackets.
 - Dedupe exact names before log lookup.
 - Treat Lost Ark OCR as English-only for v1.

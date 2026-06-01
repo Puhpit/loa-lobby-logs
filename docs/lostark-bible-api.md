@@ -180,7 +180,24 @@ Observed payload shape for `name=Freak`, `region=NA`:
 [["__skrao",1],{"name":2,"region":3},"Freak","NA"]
 ```
 
-The response envelope contains a JSON string in `result`. The app treats this endpoint as best-effort because the remote ID may change. It is used only after direct character lookup fails, and only for strict accent recovery: same character count, same positions, and each differing character must accent-fold to the OCR character.
+The response envelope contains a JSON string in `result`. The app treats this endpoint as best-effort because the remote ID may change. It is used only after direct character lookup fails, and only for conservative same-length accent/confusable recovery.
+
+Observed result records are encoded as flattened triples after reference arrays:
+
+```json
+[[1],[2,3,4],"Iamboneofmysword","hawk_eye",1795]
+```
+
+The parser extracts `{ name, classKey, itemLevel }` records. Search item level is useful diagnostic/future matching metadata, but OCR item level is not reliable enough to use as a character matching rule yet.
+
+Direct page requests can return HTTP 200 with an unparseable or missing embedded header for OCR-confused names. Treat that as recoverable and run search fallback before failing.
+
+Recovery is conservative:
+
+- same character count only;
+- accent-fold differences are allowed;
+- a small confusable set is allowed: `I/l/1`, `O/0`, `S/5`, `B/8`;
+- if more than one same-length confusable candidate matches, the lookup fails safely instead of guessing.
 
 ## Implementation Notes
 

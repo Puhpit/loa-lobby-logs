@@ -1,9 +1,6 @@
 export type Region = "NA" | "CE";
 
-export type OcrSourceMode =
-  | "applicant-list"
-  | "other-party-selected-lobby"
-  | "own-recruitment-lobby";
+export type OcrSourceMode = "character-list";
 
 export interface Rect {
   x: number;

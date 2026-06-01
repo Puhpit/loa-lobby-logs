@@ -121,7 +121,8 @@ function initSettings(env: RendererEnvironment, api: AppApi): void {
     }
   });
 
-  installCalibrationButton(env.document, api, "calibrateLobbyRegion", "lobbyRegion", calibrationStatusEl);
+  installCalibrationButton(env.document, api, "calibrateEncounterTitle", "encounterTitle", calibrationStatusEl);
+  installCalibrationButton(env.document, api, "calibrateCharacterList", "characterList", calibrationStatusEl);
 }
 
 function initOverlay(env: RendererEnvironment, api: AppApi): void {
@@ -134,6 +135,7 @@ function initOverlay(env: RendererEnvironment, api: AppApi): void {
   byId<HTMLButtonElement>(env.document, "dismissOverlay").addEventListener("click", async () => {
     void reportClick(api, "overlay.dismiss");
     void reportRendererEvent(api, "overlay.dismiss.clicked");
+    clearOverlayView(env.document);
     await api.dismissOverlay();
   });
 
@@ -144,7 +146,7 @@ function initOverlay(env: RendererEnvironment, api: AppApi): void {
 
   env.window.addEventListener("keydown", async (event) => {
     if (event.key !== "Escape") return;
-    hideLogPopover(env.document);
+    clearOverlayView(env.document);
     void reportRendererEvent(api, "overlay.dismiss.escape");
     await api.dismissOverlay();
   });
@@ -163,14 +165,6 @@ function initOverlay(env: RendererEnvironment, api: AppApi): void {
   api.onScanProgressUpdated((progress) => {
     renderOverlayProgress(env.document, progress);
   });
-
-  void renderLatestOverlayResult(env.document, api);
-}
-
-async function renderLatestOverlayResult(documentObj: Document, api: AppApi): Promise<void> {
-  const result = await api.getLastResult();
-  if (!result) return;
-  renderOverlayResult(documentObj, api, result);
 }
 
 export function renderOverlayResult(documentObj: Document, api: AppApi, result: ScanResult): void {
@@ -178,7 +172,7 @@ export function renderOverlayResult(documentObj: Document, api: AppApi, result: 
   renderSummary(result, byId(documentObj, "overlayEncounter"), byId(documentObj, "overlayDetected"), byId(documentObj, "overlayUpdated"));
   byId(documentObj, "overlayStatus").textContent = (result.encounter.groupName ?? result.encounter.visibleText) || "Unknown encounter";
   renderWarnings(documentObj, result);
-  renderRows(documentObj, result.summaries, byId(documentObj, "overlayResults"));
+  renderRows(documentObj, result.summaries, result.encounter, byId(documentObj, "overlayResults"));
   void reportRendererEvent(api, "overlay.result.rendered", {
     candidates: result.candidates.length,
     summaries: result.summaries.length,
@@ -187,6 +181,9 @@ export function renderOverlayResult(documentObj: Document, api: AppApi, result: 
 }
 
 function renderOverlayProgress(documentObj: Document, progress: ScanProgress): void {
+  if (progress.stage === "capturing" && progress.message.toLowerCase().includes("preparing")) {
+    clearOverlayView(documentObj, "Scanning...");
+  }
   const progressEl = byId(documentObj, "overlayProgress");
   const titleEl = byId(documentObj, "overlayProgressTitle");
   const messageEl = byId(documentObj, "overlayProgressMessage");
@@ -202,6 +199,18 @@ function renderOverlayProgress(documentObj: Document, progress: ScanProgress): v
   if (progress.stage !== "needs-calibration") {
     byId(documentObj, "overlayWarnings").hidden = true;
   }
+}
+
+function clearOverlayView(documentObj: Document, status = "No results yet"): void {
+  hideLogPopover(documentObj);
+  hideOverlayProgress(documentObj);
+  byId(documentObj, "overlayWarnings").replaceChildren();
+  byId(documentObj, "overlayWarnings").hidden = true;
+  byId(documentObj, "overlayResults").replaceChildren();
+  byId(documentObj, "overlayStatus").textContent = status;
+  byId(documentObj, "overlayEncounter").textContent = "Unknown";
+  byId(documentObj, "overlayDetected").textContent = "0";
+  byId(documentObj, "overlayUpdated").textContent = "Never";
 }
 
 function hideOverlayProgress(documentObj: Document): void {
@@ -232,7 +241,12 @@ function renderWarnings(documentObj: Document, result: ScanResult): void {
   warningsEl.hidden = result.warnings.length === 0;
 }
 
-function renderRows(documentObj: Document, summaries: ScanResult["summaries"], resultsEl: HTMLElement): void {
+function renderRows(
+  documentObj: Document,
+  summaries: ScanResult["summaries"],
+  encounter: ScanResult["encounter"],
+  resultsEl: HTMLElement
+): void {
   if (summaries.length === 0) {
     resultsEl.innerHTML = `<div class="empty">No characters found</div>`;
     return;
@@ -248,6 +262,7 @@ function renderRows(documentObj: Document, summaries: ScanResult["summaries"], r
           <span class="name"></span>
           <div class="meta"></div>
           <div class="encounter-tag"></div>
+          <div class="lookup-message"></div>
         </div>
         ${percentileMetric(summary)}
         ${performanceMetric(summary)}
@@ -261,6 +276,7 @@ function renderRows(documentObj: Document, summaries: ScanResult["summaries"], r
       row.querySelector(".encounter-tag")!.textContent = summary.selectedLog
         ? [summary.selectedLog.difficulty, summary.selectedLog.boss].filter(Boolean).join(" | ")
         : "";
+      row.querySelector(".lookup-message")!.textContent = friendlyLookupMessage(summary, encounter);
       row.addEventListener("pointerenter", () => showLogPopover(documentObj, row, summary));
       row.addEventListener("focusin", () => showLogPopover(documentObj, row, summary));
       row.addEventListener("pointerleave", () => hideLogPopover(documentObj));
@@ -330,7 +346,7 @@ function installCalibrationButton(
     try {
       const config = await api.startCalibration(target);
       statusEl.textContent = config
-        ? `${calibrationLabel(target)} saved: ${formatRect(rectForCalibrationTarget(config, target))}`
+        ? `${calibrationLabel(target)} saved`
         : "Calibration cancelled";
       await refreshCalibrationStatus(documentObj, api);
     } catch (error) {
@@ -343,9 +359,7 @@ async function refreshCalibrationStatus(documentObj: Document, api: AppApi): Pro
   const statusEl = byId(documentObj, "calibrationStatus");
   try {
     const status = await api.getCalibrationStatus();
-    statusEl.textContent = status.configured
-      ? `Lobby region: ${formatRect(status.config.applicantList)}`
-      : "Calibration not set";
+    statusEl.textContent = formatCalibrationStatus(status);
   } catch (error) {
     statusEl.textContent = errorMessage(error);
   }
@@ -354,10 +368,7 @@ async function refreshCalibrationStatus(documentObj: Document, api: AppApi): Pro
 function calibrationLabel(target: CalibrationTarget): string {
   return {
     encounterTitle: "Encounter",
-    applicantList: "Applicants",
-    lobbyRegion: "Lobby Region",
-    memberList: "Members",
-    selectedLobbyRow: "Selected Row"
+    characterList: "Characters"
   }[target];
 }
 
@@ -379,23 +390,22 @@ function setSelection(selection: HTMLElement, x: number, y: number, width: numbe
   selection.style.height = `${height}px`;
 }
 
-function formatRect(rect: { x: number; y: number; width: number; height: number }): string {
-  return `${rect.x},${rect.y} ${rect.width}x${rect.height}`;
-}
-
-function rectForCalibrationTarget(config: Awaited<ReturnType<AppApi["getCalibration"]>>, target: CalibrationTarget): { x: number; y: number; width: number; height: number } {
-  return target === "lobbyRegion" ? config.applicantList : config[target];
+function formatCalibrationStatus(status: Awaited<ReturnType<AppApi["getCalibrationStatus"]>>): string {
+  return [
+    `Encounter Title: ${status.zones.encounterTitle ? "Set" : "Unset"}`,
+    `Character List: ${status.zones.characterList ? "Set" : "Unset"}`
+  ].join("\n");
 }
 
 function percentileMetric(summary: ScanResult["summaries"][number]): string {
   const badges = summary.displayMetrics?.percentileBadges;
-  if (!badges?.length) return metric("Percentile", formatPercent(summary.bestPercentile));
+  if (!badges?.length) return metric("Percentile", percentileTextHtml(summary.bestPercentile));
   return `
     <div class="metric percentile-metric">
       <span>Percentile</span>
-      <strong class="badge-stack">${badges.map((badge) => `
-        <b class="percentile-badge" style="background:${badge.backgroundColor}">${badge.label}</b>
-      `).join("")}</strong>
+      <strong class="percentile-values">${badges.map((badge) => `
+        <b style="color:${badge.textColor}">${badge.label}</b>
+      `).join(supportPercentileDivider())}</strong>
     </div>
   `;
 }
@@ -407,9 +417,7 @@ function performanceMetric(summary: ScanResult["summaries"][number]): string {
     <div class="metric performance-metric">
       <span>Performance</span>
       <strong class="${summary.displayMetrics?.role === "support" ? "support-performance" : ""}">
-        ${performance.map((entry) => `
-          <b style="${entry.color ? `color:${entry.color}` : ""}">${entry.value}</b>
-        `).join("")}
+        ${formatPerformanceEntriesHtml(performance, summary.displayMetrics?.role === "support")}
       </strong>
     </div>
   `;
@@ -445,8 +453,8 @@ function showLogPopover(documentObj: Document, row: HTMLElement, summary: ScanRe
     return `
       <div class="log-detail-row">
         <span class="encounter-cell">${difficultyChip(log.difficulty)}${gateChip(log.boss)}<span>${escapeHtml(log.boss)}</span></span>
-        <span>${metrics.role === "support" ? formatSupportPercentiles(log) : formatPercent(log.percentile)}</span>
-        <span>${formatMetricEntries(metrics.performance)}</span>
+        <span class="popover-percentiles">${metrics.role === "support" ? formatSupportPercentileTexts(log) : percentileTextHtml(log.percentile)}</span>
+        <span class="${metrics.role === "support" ? "support-performance" : ""}">${formatPerformanceEntriesHtml(metrics.performance, metrics.role === "support")}</span>
         <span>${metrics.ndps.value}</span>
         <span>${formatDuration(log.duration)}</span>
         <span>${formatAge(log.timestamp)}</span>
@@ -504,13 +512,18 @@ function gateForBoss(boss: string): string | undefined {
     "Blossoming Fear, Naitreya": "G2",
     "Flash of Punishment": "G3",
     "Abyss Lord Kazeros": "G1",
+    "Archdemon Kazeros": "G2",
     "Death Incarnate Kazeros": "G2"
   };
   return gates[boss];
 }
 
-function formatSupportPercentiles(log: LogEntry): string {
-  return [formatPercent(log.contributionPercentile ?? null), formatPercent(log.percentile)].join(" | ");
+function formatSupportPercentileTexts(log: LogEntry): string {
+  return `${percentileTextHtml(log.contributionPercentile ?? null)}${supportPercentileDivider()}${percentileTextHtml(log.percentile)}`;
+}
+
+function supportPercentileDivider(): string {
+  return '<span class="support-percentile-divider" aria-hidden="true"></span>';
 }
 
 function displayMetricsForLog(log: LogEntry): CharacterDisplayMetrics {
@@ -544,12 +557,55 @@ function displayMetricsForLog(log: LogEntry): CharacterDisplayMetrics {
   };
 }
 
-function formatMetricEntries(entries: SelectedLogMetric[]): string {
-  return entries.map((entry) => entry.value).join("-");
+function formatPerformanceEntriesHtml(entries: SelectedLogMetric[], dotted: boolean): string {
+  const separator = dotted ? '<span class="performance-separator">·</span>' : "";
+  return entries.map((entry) => `
+    <b style="${entry.color ? `color:${entry.color}` : ""}">${entry.value}</b>
+  `).join(separator);
 }
 
 function formatPercent(value: number | null): string {
   return value === null ? "-" : `${Math.floor(value * 100)}`;
+}
+
+function percentileTextHtml(value: number | null): string {
+  if (value === null) return "-";
+  const label = formatPercent(value);
+  return `<b style="color:${percentileTextColor(value)}">${label}</b>`;
+}
+
+function percentileTextColor(value: number): string {
+  const percentile = Math.floor(value * 100);
+  if (percentile === 100) return "#dcc999";
+  if (percentile === 99) return "#FF69B4";
+  if (percentile >= 95) return "#FFA441";
+  if (percentile >= 75) return "#ce84ff";
+  if (percentile >= 50) return "#0096ff";
+  if (percentile >= 25) return "#3dd351";
+  return "#afafaf";
+}
+
+function friendlyLookupMessage(summary: ScanResult["summaries"][number], encounter: ScanResult["encounter"]): string {
+  if (summary.flags.includes("no-encounter-match") && summary.selectedLog) {
+    return `No matching ${formatEncounterContext(encounter)} logs; showing latest public log`;
+  }
+  if (summary.selectedLog) return "";
+  if (
+    summary.flags.includes("no-public-logs") ||
+    summary.flags.includes("character-not-found") ||
+    summary.errorMessage?.toLowerCase().includes("does not have public") ||
+    summary.errorMessage?.toLowerCase().includes("not found")
+  ) {
+    return `Character ${summary.name} does not have public logs`;
+  }
+  if (summary.errorMessage || summary.flags.includes("scrape-failed")) {
+    return `Could not load logs for ${summary.name}`;
+  }
+  return "";
+}
+
+function formatEncounterContext(encounter: ScanResult["encounter"]): string {
+  return [encounter.difficulty, encounter.groupName ?? encounter.visibleText].filter(Boolean).join(" ") || "encounter";
 }
 
 function formatNumber(value: number | null | undefined): string {

@@ -39,7 +39,7 @@ class FakeElement {
     this.html = value;
     this.children.length = 0;
 
-    for (const className of ["identity", "name", "meta", "encounter-tag", "metric", "empty", "log-detail-row"]) {
+    for (const className of ["identity", "name", "meta", "encounter-tag", "lookup-message", "metric", "empty", "log-detail-row"]) {
       if (!value.includes(`class="${className}`)) continue;
       const child = new FakeElement("div");
       child.className = className;
@@ -153,7 +153,8 @@ const settingsIds = [
   "saveSettings",
   "openLogs",
   "calibrationStatus",
-  "calibrateLobbyRegion"
+  "calibrateEncounterTitle",
+  "calibrateCharacterList"
 ];
 
 describe("renderer boot", () => {
@@ -192,12 +193,37 @@ describe("renderer boot", () => {
     expect(row.querySelector(".name")?.textContent).toBe("Pepegami");
     expect(row.querySelector(".meta")?.textContent).toContain("ilvl 1765.33");
     expect(row.innerHTML).toContain("nDPS/uDPS");
-    expect(row.innerHTML).toContain("percentile-badge");
+    expect(row.innerHTML).toContain("color:#FF69B4");
     expect(row.innerHTML).toContain(">99</b>");
+    expect(row.innerHTML).not.toContain("percentile-badge");
     expect(row.innerHTML).not.toContain("ocr-uncertain");
     expect(row.innerHTML).not.toContain("scrape-failed");
     expect(row.innerHTML).not.toContain("log-details");
     expect(api.events.map((event) => event.event)).toContain("overlay.result.rendered");
+  });
+
+  it("clears stale overlay content on scan start and dismiss", async () => {
+    const document = new FakeDocument(overlayIds);
+    const window = new FakeWindow({ href: "app://index.html?view=overlay", search: "?view=overlay" });
+    const api = createApi();
+    window.loaLobbyLogs = api;
+
+    bootRenderer({ window: window as unknown as Window, document: document as unknown as Document });
+    await flushPromises();
+
+    api.emitScanResult(scanResult());
+    await flushPromises();
+    expect(document.getElementById("overlayResults")!.children).toHaveLength(1);
+
+    api.emitScanProgress({ stage: "capturing", message: "Preparing scan..." });
+    expect(document.getElementById("overlayResults")!.children).toHaveLength(0);
+    expect(document.getElementById("overlayDetected")!.textContent).toBe("0");
+    expect(document.getElementById("overlayStatus")!.textContent).toBe("Scanning...");
+
+    api.emitScanResult(scanResult());
+    await document.getElementById("dismissOverlay")!.trigger("click");
+    expect(document.getElementById("overlayResults")!.children).toHaveLength(0);
+    expect(document.getElementById("overlayStatus")!.textContent).toBe("No results yet");
   });
 
   it("renders hover logs into an overlay-level popover", async () => {
@@ -224,6 +250,24 @@ describe("renderer boot", () => {
     expect(document.getElementById("overlayResults")!.children[0].innerHTML).not.toContain("log-detail-row");
   });
 
+  it("renders Archdemon Kazeros as Kazeros G2", async () => {
+    const document = new FakeDocument(overlayIds);
+    const window = new FakeWindow({ href: "app://index.html?view=overlay", search: "?view=overlay" });
+    const api = createApi();
+    window.loaLobbyLogs = api;
+
+    bootRenderer({ window: window as unknown as Window, document: document as unknown as Document });
+    await flushPromises();
+
+    api.emitScanResult(scanResult({ boss: "Archdemon Kazeros", difficulty: "Normal" }));
+    await flushPromises();
+    await document.getElementById("overlayResults")!.children[0].trigger("pointerenter");
+
+    const popover = document.getElementById("overlayLogPopover")!;
+    expect(popover.innerHTML).toContain("G2");
+    expect(popover.innerHTML).toContain("Archdemon Kazeros");
+  });
+
   it("renders support popover percentiles with lostark.bible separators", async () => {
     const document = new FakeDocument(overlayIds);
     const window = new FakeWindow({ href: "app://index.html?view=overlay", search: "?view=overlay" });
@@ -237,7 +281,58 @@ describe("renderer boot", () => {
     await flushPromises();
     await document.getElementById("overlayResults")!.children[0].trigger("pointerenter");
 
-    expect(document.getElementById("overlayLogPopover")!.innerHTML).toContain("33 | 95");
+    const html = document.getElementById("overlayLogPopover")!.innerHTML;
+    expect(html).toContain("color:#3dd351");
+    expect(html).toContain(">33</b>");
+    expect(html).toContain("support-percentile-divider");
+    expect(html).toContain("color:#FFA441");
+    expect(html).toContain(">95</b>");
+    expect(html).toContain("performance-separator");
+    expect(html).not.toContain("support-percentile-separator");
+    expect(html).not.toContain("percentile-badge");
+  });
+
+  it("renders friendly failed lookup messages without raw flags", async () => {
+    const document = new FakeDocument(overlayIds);
+    const window = new FakeWindow({ href: "app://index.html?view=overlay", search: "?view=overlay" });
+    const api = createApi();
+    window.loaLobbyLogs = api;
+
+    bootRenderer({ window: window as unknown as Window, document: document as unknown as Document });
+    await flushPromises();
+
+    api.emitScanResult(scanResult({ selectedLog: false, flags: ["no-public-logs", "scrape-failed"] }));
+    const row = document.getElementById("overlayResults")!.children[0];
+
+    expect(row.querySelector(".lookup-message")?.textContent).toBe("Character Pepegami does not have public logs");
+    expect(row.innerHTML).not.toContain("no-public-logs");
+    expect(row.innerHTML).not.toContain("scrape-failed");
+  });
+
+  it("renders a warning when showing fallback logs for a known encounter", async () => {
+    const document = new FakeDocument(overlayIds);
+    const window = new FakeWindow({ href: "app://index.html?view=overlay", search: "?view=overlay" });
+    const api = createApi();
+    window.loaLobbyLogs = api;
+
+    bootRenderer({ window: window as unknown as Window, document: document as unknown as Document });
+    await flushPromises();
+
+    api.emitScanResult(scanResult({
+      boss: "Corvus Tul Rak",
+      difficulty: "Hard",
+      flags: ["no-encounter-match"],
+      encounter: {
+        visibleText: "[Hard] Final Day",
+        groupName: "Kazeros",
+        difficulty: "Hard",
+        bosses: ["Death Incarnate Kazeros", "Archdemon Kazeros", "Abyss Lord Kazeros"]
+      }
+    }));
+    const row = document.getElementById("overlayResults")!.children[0];
+
+    expect(row.querySelector(".encounter-tag")?.textContent).toBe("Hard | Corvus Tul Rak");
+    expect(row.querySelector(".lookup-message")?.textContent).toBe("No matching Hard Kazeros logs; showing latest public log");
   });
 
   it("wires settings buttons to their expected APIs", async () => {
@@ -258,7 +353,7 @@ describe("renderer boot", () => {
     expect(api.saveSettingsCalls).toBe(1);
     expect(api.savedSettings?.overlayPosition).toBe("right");
     expect(api.startScanCalls).toBe(1);
-    expect(document.getElementById("calibrationStatus")!.textContent).toBe("Lobby region: 0,0 1x1");
+    expect(document.getElementById("calibrationStatus")!.textContent).toBe("Encounter Title: Set\nCharacter List: Unset");
     expect(api.events).toContainEqual({ event: "button.click", data: { action: "settings.save" } });
     expect(api.events).toContainEqual({ event: "button.click", data: { action: "settings.scanNow" } });
   });
@@ -332,7 +427,6 @@ function createApi(): AppApi & {
       api.startScanCalls += 1;
       return scanResult();
     },
-    getLastResult: async () => undefined,
     onScanResultUpdated: (callback) => {
       listeners.push(callback);
       return () => undefined;
@@ -365,20 +459,15 @@ function createApi(): AppApi & {
     chooseScreenshot: async () => "screenshot.png",
     getCalibration: async () => ({
       version: 1,
-      encounterTitle: { x: 0, y: 0, width: 1, height: 1 },
-      applicantList: { x: 0, y: 0, width: 1, height: 1 },
-      memberList: { x: 0, y: 0, width: 1, height: 1 },
-      selectedLobbyRow: { x: 0, y: 0, width: 1, height: 1 }
+      encounterTitle: { x: 0, y: 0, width: 1, height: 1 }
     }),
     getCalibrationStatus: async () => ({
-      configured: true,
+      configured: false,
       config: {
         version: 1,
-        encounterTitle: { x: 0, y: 0, width: 1, height: 1 },
-        applicantList: { x: 0, y: 0, width: 1, height: 1 },
-        memberList: { x: 0, y: 0, width: 1, height: 1 },
-        selectedLobbyRow: { x: 0, y: 0, width: 1, height: 1 }
-      }
+        encounterTitle: { x: 0, y: 0, width: 1, height: 1 }
+      },
+      zones: { encounterTitle: true, characterList: false }
     }),
     saveCalibration: async (config) => config,
     startCalibration: async () => undefined,
@@ -401,6 +490,9 @@ function scanResult(options: {
   role?: "dps" | "support";
   percentile?: number;
   contributionPercentile?: number;
+  selectedLog?: boolean;
+  flags?: ScanResult["summaries"][number]["flags"];
+  encounter?: ScanResult["encounter"];
 } = {}): ScanResult {
   const role = options.role ?? "dps";
   const selectedLog = {
@@ -425,12 +517,12 @@ function scanResult(options: {
   };
 
   return {
-    encounter: { visibleText: "Dark Baratron", groupName: "Dark Baratron", bosses: ["Dark Baratron"] },
+    encounter: options.encounter ?? { visibleText: "Dark Baratron", groupName: "Dark Baratron", bosses: ["Dark Baratron"] },
     candidates: [{
       rawText: "Pepegami",
       normalizedName: "Pepegami",
       confidence: 0.9,
-      sourceMode: "other-party-selected-lobby",
+      sourceMode: "character-list",
       cropRect: { x: 0, y: 0, width: 1, height: 1 }
     }],
     summaries: [{
@@ -438,8 +530,8 @@ function scanResult(options: {
       className: "Sorceress",
       spec: "Igniter",
       gearScore: 1765.329950546875,
-      selectedLog,
-      recentEncounterLogs: [selectedLog],
+      selectedLog: options.selectedLog === false ? undefined : selectedLog,
+      recentEncounterLogs: options.selectedLog === false ? [] : [selectedLog],
       displayMetrics: {
         role,
         percentileBadges: role === "support"
@@ -463,7 +555,7 @@ function scanResult(options: {
       medianDps: 900_000_000,
       medianNdps: 306_477_091,
       latestTimestamp: 1,
-      flags: ["ocr-uncertain", "scrape-failed"]
+      flags: options.flags ?? ["ocr-uncertain", "scrape-failed"]
     }],
     generatedAt: "2026-05-31T04:41:02.660Z",
     warnings: []

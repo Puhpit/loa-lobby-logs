@@ -1,46 +1,13 @@
 import type { CharacterCandidate } from "../shared/types.js";
 
 const LOST_ARK_NAME_PATTERN = /^\p{L}[\p{L}\p{N}]{3,15}$/u;
-const OCR_STOP_WORDS = new Set([
+const OCR_DENYLIST = new Set([
   "applicant",
-  "aegir",
-  "akkan",
-  "arcturus",
-  "armoche",
-  "azena",
-  "balthorr",
-  "arty",
-  "brelshaza",
-  "ceos",
-  "dbslca",
   "details",
-  "echidna",
-  "elpon",
-  "ezrebet",
-  "final",
-  "first",
-  "gate",
   "group",
-  "hard",
-  "inanna",
-  "iting",
-  "kadan",
-  "kazeros",
-  "kharmine",
   "lobby",
-  "luterra",
-  "luttera",
-  "mari",
   "member",
-  "mordum",
-  "neria",
-  "nightmare",
-  "nineveh",
-  "noma",
-  "normal",
-  "oaciting",
   "party",
-  "rai",
   "raid",
   "rec",
   "recr",
@@ -48,13 +15,22 @@ const OCR_STOP_WORDS = new Set([
   "recruit",
   "recruiti",
   "recruiting",
-  "settings",
   "selected",
-  "serca",
+  "settings",
+  "view",
+  "arcturus",
+  "balthorr",
+  "brelshaza",
+  "elpon",
+  "gienah",
+  "inanna",
+  "luterra",
+  "luttera",
+  "nineveh",
+  "ortuus",
+  "ratik",
   "thaemine",
-  "una",
-  "vairgrys",
-  "view"
+  "vairgrys"
 ]);
 
 export function normalizeOcrName(rawText: string): string {
@@ -74,7 +50,7 @@ export function normalizeOcrNames(rawText: string): string[] {
     .split(" ")
     .map((part) => part.replace(/[^\p{L}\p{N}]/gu, ""))
     .filter((part) => LOST_ARK_NAME_PATTERN.test(part))
-    .filter((part) => !OCR_STOP_WORDS.has(part.toLocaleLowerCase()));
+    .filter((part) => !OCR_DENYLIST.has(part.toLocaleLowerCase()));
 }
 
 export function dedupeCharacterCandidates(candidates: CharacterCandidate[]): CharacterCandidate[] {

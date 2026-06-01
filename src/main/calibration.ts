@@ -1,86 +1,91 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import type { OcrSourceMode, Rect } from "../shared/types.js";
+import type { Rect } from "../shared/types.js";
 
 export interface CalibrationConfig {
   version: 1;
   encounterTitle: Rect;
-  applicantList: Rect;
-  memberList: Rect;
-  selectedLobbyRow: Rect;
+  characterList: Rect;
+}
+
+export interface SavedCalibrationConfig {
+  version: 1;
+  encounterTitle?: Rect;
+  characterList?: Rect;
 }
 
 export interface CalibrationStatus {
   configured: boolean;
-  config: CalibrationConfig;
+  config: SavedCalibrationConfig;
+  zones: Record<CalibrationTarget, boolean>;
 }
 
 export type CalibrationRectKey = Exclude<keyof CalibrationConfig, "version">;
-export type CalibrationTarget = CalibrationRectKey | "lobbyRegion";
+export type CalibrationTarget = CalibrationRectKey;
 
 export const calibrationTargets: CalibrationTarget[] = [
-  "lobbyRegion",
   "encounterTitle",
-  "applicantList",
-  "memberList",
-  "selectedLobbyRow"
+  "characterList"
 ];
 
-export const defaultCalibration: CalibrationConfig = {
-  version: 1,
-  encounterTitle: { x: 2440, y: 235, width: 450, height: 60 },
-  applicantList: { x: 2200, y: 385, width: 560, height: 60 },
-  memberList: { x: 2185, y: 370, width: 640, height: 460 },
-  selectedLobbyRow: { x: 2190, y: 430, width: 360, height: 60 }
-};
-
-export function cropRectForMode(config: CalibrationConfig, mode: OcrSourceMode): Rect {
-  if (mode === "applicant-list") return config.applicantList;
-  if (mode === "other-party-selected-lobby") return config.memberList;
-  return config.selectedLobbyRow;
-}
+export const emptyCalibration: SavedCalibrationConfig = { version: 1 };
 
 export function validateCalibrationConfig(value: unknown): CalibrationConfig {
-  const config = value as Partial<CalibrationConfig>;
+  const config = validateSavedCalibrationConfig(value);
+
+  return {
+    version: 1,
+    encounterTitle: validateRect(config.encounterTitle, "encounterTitle"),
+    characterList: validateRect(config.characterList, "characterList")
+  };
+}
+
+export function validateSavedCalibrationConfig(value: unknown): SavedCalibrationConfig {
+  const config = value as Partial<SavedCalibrationConfig> & Record<string, unknown>;
 
   if (config.version !== 1) {
     throw new Error("Calibration config version must be 1");
   }
 
+  if ("applicantList" in config || "memberList" in config || "selectedLobbyRow" in config) {
+    throw new Error("Legacy calibration config must be recalibrated");
+  }
+
   return {
     version: 1,
-    encounterTitle: validateRect(config.encounterTitle, "encounterTitle"),
-    applicantList: validateRect(config.applicantList, "applicantList"),
-    memberList: validateRect(config.memberList, "memberList"),
-    selectedLobbyRow: validateRect(config.selectedLobbyRow, "selectedLobbyRow")
+    ...(config.encounterTitle ? { encounterTitle: validateRect(config.encounterTitle, "encounterTitle") } : {}),
+    ...(config.characterList ? { characterList: validateRect(config.characterList, "characterList") } : {})
   };
 }
 
 export async function loadCalibrationConfig(path: string): Promise<CalibrationConfig> {
+  return validateCalibrationConfig(JSON.parse(await readFile(path, "utf8")));
+}
+
+export async function loadSavedCalibrationConfig(path: string): Promise<SavedCalibrationConfig> {
   try {
-    return validateCalibrationConfig(JSON.parse(await readFile(path, "utf8")));
+    return validateSavedCalibrationConfig(JSON.parse(await readFile(path, "utf8")));
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return defaultCalibration;
+    if ((error as NodeJS.ErrnoException).code === "ENOENT" || error instanceof Error) return emptyCalibration;
     throw error;
   }
 }
 
 export async function loadCalibrationStatus(path: string): Promise<CalibrationStatus> {
-  try {
-    return {
-      configured: true,
-      config: validateCalibrationConfig(JSON.parse(await readFile(path, "utf8")))
-    };
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      return { configured: false, config: defaultCalibration };
-    }
-    throw error;
-  }
+  const config = await loadSavedCalibrationConfig(path);
+  const zones = {
+    encounterTitle: Boolean(config.encounterTitle),
+    characterList: Boolean(config.characterList)
+  };
+  return {
+    configured: zones.encounterTitle && zones.characterList,
+    config,
+    zones
+  };
 }
 
-export async function saveCalibrationConfig(path: string, config: CalibrationConfig): Promise<void> {
-  const valid = validateCalibrationConfig(config);
+export async function saveCalibrationConfig(path: string, config: SavedCalibrationConfig): Promise<void> {
+  const valid = validateSavedCalibrationConfig(config);
   await mkdir(dirname(path), { recursive: true });
   await writeFile(path, `${JSON.stringify(valid, null, 2)}\n`, "utf8");
 }

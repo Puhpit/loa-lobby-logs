@@ -42,6 +42,12 @@ interface RawPageData {
   logs?: unknown[];
 }
 
+export interface SearchCandidate {
+  name: string;
+  classKey?: string;
+  itemLevel?: number;
+}
+
 export type LostArkBibleErrorCode =
   | "not_found"
   | "private_logs"
@@ -92,7 +98,20 @@ export class LostArkBibleProvider {
       }
       throw error;
     }
-    const pageData = extractPageData(html);
+    let pageData: RawPageData;
+    try {
+      pageData = extractPageData(html);
+    } catch (error) {
+      if (!resolvedFromSearch) {
+        const searchName = await this.searchCanonicalCharacterName(region, name).catch(() => undefined);
+        if (searchName && searchName !== name) {
+          return this.getCharacterLogsInternal(region, searchName, options, name);
+        }
+      }
+      throw error instanceof LostArkBibleError
+        ? error
+        : new LostArkBibleError("api_shape", error instanceof Error ? error.message : String(error));
+    }
     const header = pageData.header ? normalizeHeader(pageData.header) : undefined;
     const firstPageLogs = (pageData.logs ?? []).map(normalizeLogEntry);
 
@@ -141,15 +160,24 @@ export class LostArkBibleProvider {
   }
 
   private async searchCanonicalCharacterName(region: Region, name: string): Promise<string | undefined> {
-    const payload = encodeSearchPayload(name, region);
-    const response = await this.fetchImpl(`${SEARCH_ENDPOINT}?payload=${payload}`, {
-      headers: { Accept: "application/json" }
-    });
+    const matches = new Map<string, SearchCandidate>();
 
-    if (!response.ok) return undefined;
-    const data = await response.json() as unknown;
-    const candidates = decodeSearchResultNames(data);
-    return candidates.find((candidate) => strictAccentVariantMatch(name, candidate));
+    for (const query of searchQueriesForName(name)) {
+      const payload = encodeSearchPayload(query, region);
+      const response = await this.fetchImpl(`${SEARCH_ENDPOINT}?payload=${payload}`, {
+        headers: { Accept: "application/json" }
+      });
+
+      if (!response.ok) continue;
+      const data = await response.json() as unknown;
+      for (const candidate of decodeSearchResultCandidates(data)) {
+        if (strictRecoverableNameMatch(name, candidate.name)) {
+          matches.set(candidate.name.toLowerCase(), candidate);
+        }
+      }
+    }
+
+    return matches.size === 1 ? [...matches.values()][0]?.name : undefined;
   }
 
   private async fetchLogPage(
@@ -460,24 +488,36 @@ export function encodeSearchPayload(name: string, region: Region): string {
 }
 
 export function decodeSearchResultNames(data: unknown): string[] {
+  return decodeSearchResultCandidates(data).map((candidate) => candidate.name);
+}
+
+export function decodeSearchResultCandidates(data: unknown): SearchCandidate[] {
   const envelope = data as { type?: unknown; result?: unknown };
   if (envelope.type !== "result" || typeof envelope.result !== "string") return [];
 
   try {
-    return uniqueStrings(collectStrings(JSON.parse(envelope.result))).filter(isLikelyCharacterName);
+    return uniqueSearchCandidates(collectSearchCandidates(JSON.parse(envelope.result)));
   } catch {
     return [];
   }
 }
 
 export function strictAccentVariantMatch(ocrName: string, candidate: string): boolean {
+  return strictRecoverableNameMatch(ocrName, candidate, false);
+}
+
+export function strictRecoverableNameMatch(ocrName: string, candidate: string, allowConfusables = true): boolean {
   const ocrChars = Array.from(ocrName);
   const candidateChars = Array.from(candidate);
   if (ocrChars.length !== candidateChars.length) return false;
 
   return ocrChars.every((ocrChar, index) => {
     const candidateChar = candidateChars[index];
-    return candidateChar === ocrChar || foldLatin(candidateChar).toLowerCase() === foldLatin(ocrChar).toLowerCase();
+    return (
+      candidateChar === ocrChar ||
+      foldLatin(candidateChar).toLowerCase() === foldLatin(ocrChar).toLowerCase() ||
+      (allowConfusables && areConfusableCharacters(ocrChar, candidateChar))
+    );
   });
 }
 
@@ -492,15 +532,40 @@ function base64UrlEncode(value: string): string {
     .replace(/=+$/g, "");
 }
 
-function collectStrings(value: unknown): string[] {
-  if (typeof value === "string") return [value];
-  if (Array.isArray(value)) return value.flatMap(collectStrings);
-  if (value && typeof value === "object") return Object.values(value).flatMap(collectStrings);
-  return [];
+function collectSearchCandidates(value: unknown): SearchCandidate[] {
+  if (!Array.isArray(value)) {
+    if (value && typeof value === "object") return Object.values(value).flatMap(collectSearchCandidates);
+    return [];
+  }
+
+  const candidates: SearchCandidate[] = [];
+  for (let index = 0; index < value.length - 2; index++) {
+    const name = value[index];
+    const classKey = value[index + 1];
+    const itemLevel = value[index + 2];
+    if (
+      typeof name === "string" &&
+      isLikelyCharacterName(name) &&
+      typeof classKey === "string" &&
+      typeof itemLevel === "number"
+    ) {
+      candidates.push({ name, classKey, itemLevel });
+    }
+  }
+
+  return candidates.concat(value.flatMap(collectSearchCandidates));
 }
 
-function uniqueStrings(values: string[]): string[] {
-  return [...new Set(values)];
+function uniqueSearchCandidates(values: SearchCandidate[]): SearchCandidate[] {
+  const seen = new Set<string>();
+  const unique: SearchCandidate[] = [];
+  for (const value of values) {
+    const key = value.name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(value);
+  }
+  return unique;
 }
 
 function isLikelyCharacterName(value: string): boolean {
@@ -513,6 +578,40 @@ function foldLatin(value: string): string {
     .join("")
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "");
+}
+
+function searchQueriesForName(name: string): string[] {
+  const queries = new Set([name]);
+  const chars = Array.from(name);
+
+  for (let index = 0; index < chars.length && queries.size < 32; index++) {
+    const group = confusableGroupForChar(chars[index]);
+    if (!group) continue;
+    for (const replacement of group) {
+      if (replacement === chars[index]) continue;
+      const next = [...chars];
+      next[index] = replacement;
+      queries.add(next.join(""));
+      if (queries.size >= 32) break;
+    }
+  }
+
+  return [...queries];
+}
+
+const CONFUSABLE_GROUPS = ["iIl1", "oO0", "sS5", "bB8"];
+
+function areConfusableCharacters(left: string, right: string): boolean {
+  const leftFolded = foldLatin(left);
+  const rightFolded = foldLatin(right);
+  if (leftFolded.length !== 1 || rightFolded.length !== 1) return false;
+  return CONFUSABLE_GROUPS.some((group) => group.includes(leftFolded) && group.includes(rightFolded));
+}
+
+function confusableGroupForChar(char: string): string | undefined {
+  const folded = foldLatin(char);
+  if (folded.length !== 1) return undefined;
+  return CONFUSABLE_GROUPS.find((group) => group.includes(folded));
 }
 
 function errorForStatus(status: number, prefix: string): LostArkBibleError {

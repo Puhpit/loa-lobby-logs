@@ -3,12 +3,14 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   buildLogsRequestBody,
+  decodeSearchResultCandidates,
   decodeSearchResultNames,
   encodeSearchPayload,
   extractPageData,
   LostArkBibleError,
   LostArkBibleProvider,
-  strictAccentVariantMatch
+  strictAccentVariantMatch,
+  strictRecoverableNameMatch
 } from "../src/main/lostarkBible.js";
 import type { CharacterHeader } from "../src/shared/types.js";
 
@@ -193,7 +195,10 @@ describe("LostArkBibleProvider page extraction", () => {
       if (url.endsWith("/character/NA/Freak/logs")) return new Response("missing", { status: 404 });
       if (url.startsWith("https://lostark.bible/_app/remote/ngsbie/search")) {
         expect(url).toContain(encodeSearchPayload("Freak", "NA"));
-        return Response.json({ type: "result", result: JSON.stringify([[1, 2], "Frëak", "Frëakk", "Fraek"]) });
+        return Response.json({
+          type: "result",
+          result: JSON.stringify([[1], [2, 3, 4], "Frëak", "arcana", 1766.67, [5], "Frëakk", "arcana", 1766, [6], "Fraek", "arcana", 1766])
+        });
       }
       if (url.endsWith("/character/NA/Fr%C3%ABak/logs")) return new Response(minimalPage(), { status: 200 });
       if (url.endsWith("/api/character/logs")) return Response.json([]);
@@ -209,11 +214,66 @@ describe("LostArkBibleProvider page extraction", () => {
   });
 
   it("strict accent recovery rejects length changes, swaps, and substitutions", () => {
-    expect(decodeSearchResultNames({ type: "result", result: JSON.stringify(["Frëak"]) })).toEqual(["Frëak"]);
+    expect(decodeSearchResultNames({ type: "result", result: JSON.stringify([[1], [2, 3, 4], "Frëak", "arcana", 1766.67]) })).toEqual(["Frëak"]);
     expect(strictAccentVariantMatch("Freak", "Frëak")).toBe(true);
     expect(strictAccentVariantMatch("Freak", "Frëakk")).toBe(false);
     expect(strictAccentVariantMatch("Freak", "Fëark")).toBe(false);
     expect(strictAccentVariantMatch("Freak", "Fraek")).toBe(false);
+  });
+
+  it("decodes search records with class and item level", () => {
+    expect(decodeSearchResultCandidates({
+      type: "result",
+      result: JSON.stringify([[1], [2, 3, 4], "Iamboneofmysword", "hawk_eye", 1795])
+    })).toEqual([{ name: "Iamboneofmysword", classKey: "hawk_eye", itemLevel: 1795 }]);
+  });
+
+  it("falls back to search when the direct page header is unparseable", async () => {
+    const requests: string[] = [];
+    const fetchMock = async (input: RequestInfo | URL): Promise<Response> => {
+      const url = String(input);
+      requests.push(url);
+      if (url.endsWith("/character/NA/lamboneofmysword/logs")) return new Response("header: { nope: true }", { status: 200 });
+      if (url.includes(encodeSearchPayload("Iamboneofmysword", "NA"))) {
+        return Response.json({ type: "result", result: JSON.stringify([[1], [2, 3, 4], "Iamboneofmysword", "hawk_eye", 1795]) });
+      }
+      if (url.startsWith("https://lostark.bible/_app/remote/ngsbie/search")) {
+        return Response.json({ type: "result", result: JSON.stringify([[]]) });
+      }
+      if (url.endsWith("/character/NA/Iamboneofmysword/logs")) return new Response(minimalPage(), { status: 200 });
+      if (url.endsWith("/api/character/logs")) return Response.json([]);
+      throw new Error(`Unexpected URL ${url}`);
+    };
+
+    const result = await new LostArkBibleProvider(fetchMock as typeof fetch).getCharacterLogs("NA", "lamboneofmysword", 1);
+
+    expect(result.name).toBe("Iamboneofmysword");
+    expect(result.resolvedFromSearch).toBe("lamboneofmysword");
+    expect(requests).toContain("https://lostark.bible/character/NA/Iamboneofmysword/logs");
+  });
+
+  it("uses conservative confusable recovery only when unambiguous", () => {
+    expect(strictRecoverableNameMatch("lamboneofmysword", "Iamboneofmysword")).toBe(true);
+    expect(strictRecoverableNameMatch("Bors", "8or5")).toBe(true);
+    expect(strictRecoverableNameMatch("Freak", "Fraek")).toBe(false);
+  });
+
+  it("fails safely when confusable search recovery is ambiguous", async () => {
+    const fetchMock = async (input: RequestInfo | URL): Promise<Response> => {
+      const url = String(input);
+      if (url.endsWith("/character/NA/Blab/logs")) return new Response("missing", { status: 404 });
+      if (url.startsWith("https://lostark.bible/_app/remote/ngsbie/search")) {
+        return Response.json({
+          type: "result",
+          result: JSON.stringify([[1], [2, 3, 4], "BIab", "hawk_eye", 1795, [5], [6, 7, 8], "B1ab", "arcana", 1790])
+        });
+      }
+      throw new Error(`Unexpected URL ${url}`);
+    };
+
+    await expect(new LostArkBibleProvider(fetchMock as typeof fetch).getCharacterLogs("NA", "Blab", 1)).rejects.toMatchObject({
+      code: "not_found"
+    });
   });
 });
 

@@ -1,4 +1,4 @@
-import type { CalibrationConfig, CalibrationStatus, CalibrationTarget } from "../main/calibration.js";
+import type { CalibrationConfig, CalibrationStatus, CalibrationTarget, SavedCalibrationConfig } from "../main/calibration.js";
 import type { CharacterCandidate, CharacterSummary, Rect, Region } from "./types.js";
 
 export type CaptureMode = "foreground-window-display";
@@ -57,7 +57,6 @@ export interface ScanProgress {
 export interface AppApi {
   reviewLobby(input: ReviewLobbyInput): Promise<ReviewLobbyOutput>;
   startScan(): Promise<ScanResult | undefined>;
-  getLastResult(): Promise<ScanResult | undefined>;
   onScanResultUpdated(callback: (result: ScanResult) => void): () => void;
   onScanProgressUpdated(callback: (progress: ScanProgress) => void): () => void;
   dismissOverlay(): Promise<void>;
@@ -69,10 +68,10 @@ export interface AppApi {
   reportRendererError(event: string, data: Record<string, unknown>): Promise<void>;
   runScreenshotOcr(screenshotPath: string): Promise<CharacterCandidate[]>;
   chooseScreenshot(): Promise<string | undefined>;
-  getCalibration(): Promise<CalibrationConfig>;
+  getCalibration(): Promise<SavedCalibrationConfig>;
   getCalibrationStatus(): Promise<CalibrationStatus>;
-  saveCalibration(config: CalibrationConfig): Promise<CalibrationConfig>;
-  startCalibration(target: CalibrationTarget): Promise<CalibrationConfig | undefined>;
+  saveCalibration(config: SavedCalibrationConfig): Promise<SavedCalibrationConfig>;
+  startCalibration(target: CalibrationTarget): Promise<SavedCalibrationConfig | undefined>;
   completeCalibration(target: CalibrationTarget, rect?: Rect): Promise<void>;
   setAlwaysOnTop(value: boolean): Promise<boolean>;
 }

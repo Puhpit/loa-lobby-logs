@@ -11,7 +11,7 @@ import type { CharacterCandidate, CharacterSummary } from "../shared/types.js";
 
 export interface AppPipelineOptions {
   userDataPath: string;
-  calibration: CalibrationConfig;
+  calibration?: CalibrationConfig;
   fetchImpl?: typeof fetch;
   logger?: DiagnosticsLogger;
   scanId?: string;
@@ -32,8 +32,8 @@ export async function reviewLobby(input: ReviewLobbyInput, options: AppPipelineO
   const candidates = input.ocrCandidates ?? (input.useScreenshotOcr && input.screenshotPath
     ? await new ScreenshotCharacterSource({
         imagePath: input.screenshotPath,
-        calibration: options.calibration,
-        sourceMode: "applicant-list",
+        calibration: requiredCalibration(options.calibration),
+        sourceMode: "character-list",
         logger: options.logger,
         scanId: options.scanId
       }).getVisibleApplicants()
@@ -75,6 +75,11 @@ export async function reviewLobby(input: ReviewLobbyInput, options: AppPipelineO
   });
 
   return output;
+}
+
+function requiredCalibration(calibration: CalibrationConfig | undefined): CalibrationConfig {
+  if (!calibration) throw new Error("Calibration is required for screenshot OCR");
+  return calibration;
 }
 
 function applyOcrFlags(summaries: CharacterSummary[], candidates: CharacterCandidate[]): CharacterSummary[] {
