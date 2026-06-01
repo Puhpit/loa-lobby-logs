@@ -8,7 +8,7 @@ export const defaultSettings: AppSettings = {
   server: "NA",
   scanHotkey: "Ctrl+Alt+D",
   captureMode: "foreground-window-display",
-  overlayPosition: "right"
+  overlayPosition: "left"
 };
 
 export async function loadSettings(path: string): Promise<AppSettings> {
@@ -34,10 +34,14 @@ export function validateSettings(value: unknown): AppSettings {
     server: validateRegion(settings.server),
     scanHotkey: normalizeHotkey(settings.scanHotkey).userFacing,
     captureMode: "foreground-window-display",
-    overlayPosition: "right"
+    overlayPosition: validateOverlayPosition(settings.overlayPosition)
   };
 }
 
 function validateRegion(value: unknown): Region {
   return value === "CE" ? "CE" : "NA";
+}
+
+function validateOverlayPosition(value: unknown): AppSettings["overlayPosition"] {
+  return value === "right" ? "right" : "left";
 }

@@ -8,6 +8,23 @@ import type {
 } from "../shared/types.js";
 
 const BASE_URL = "https://lostark.bible";
+const SEARCH_ENDPOINT = `${BASE_URL}/_app/remote/ngsbie/search`;
+const LATIN_BASE_CHARACTERS: Record<string, string> = {
+  Æ: "AE",
+  æ: "ae",
+  Ð: "D",
+  ð: "d",
+  Đ: "D",
+  đ: "d",
+  Ł: "L",
+  ł: "l",
+  Ø: "O",
+  ø: "o",
+  Œ: "OE",
+  œ: "oe",
+  Þ: "Th",
+  þ: "th"
+};
 
 interface RawHeader {
   id: number;
@@ -53,13 +70,39 @@ export class LostArkBibleProvider {
     name: string,
     options: number | CharacterLogsQueryOptions = {}
   ): Promise<CharacterLogsResult> {
+    return this.getCharacterLogsInternal(region, name, options);
+  }
+
+  private async getCharacterLogsInternal(
+    region: Region,
+    name: string,
+    options: number | CharacterLogsQueryOptions,
+    resolvedFromSearch?: string
+  ): Promise<CharacterLogsResult> {
     const { pages, bosses } = normalizeQueryOptions(options);
-    const html = await this.fetchText(`${BASE_URL}/character/${region}/${encodeURIComponent(name)}/logs`);
+    let html: string;
+    try {
+      html = await this.fetchText(`${BASE_URL}/character/${region}/${encodeURIComponent(name)}/logs`);
+    } catch (error) {
+      if (error instanceof LostArkBibleError && error.code === "not_found" && !resolvedFromSearch) {
+        const searchName = await this.searchCanonicalCharacterName(region, name).catch(() => undefined);
+        if (searchName && searchName !== name) {
+          return this.getCharacterLogsInternal(region, searchName, options, name);
+        }
+      }
+      throw error;
+    }
     const pageData = extractPageData(html);
     const header = pageData.header ? normalizeHeader(pageData.header) : undefined;
     const firstPageLogs = (pageData.logs ?? []).map(normalizeLogEntry);
 
     if (!header) {
+      if (!resolvedFromSearch) {
+        const searchName = await this.searchCanonicalCharacterName(region, name).catch(() => undefined);
+        if (searchName && searchName !== name) {
+          return this.getCharacterLogsInternal(region, searchName, options, name);
+        }
+      }
       throw new LostArkBibleError("not_found", `Character ${name} was not found on lostark.bible`);
     }
 
@@ -89,11 +132,24 @@ export class LostArkBibleProvider {
     return {
       region,
       name,
+      resolvedFromSearch,
       header,
       logsEnabled: true,
       isPublic: Boolean(pageData.isPublic),
       logs
     };
+  }
+
+  private async searchCanonicalCharacterName(region: Region, name: string): Promise<string | undefined> {
+    const payload = encodeSearchPayload(name, region);
+    const response = await this.fetchImpl(`${SEARCH_ENDPOINT}?payload=${payload}`, {
+      headers: { Accept: "application/json" }
+    });
+
+    if (!response.ok) return undefined;
+    const data = await response.json() as unknown;
+    const candidates = decodeSearchResultNames(data);
+    return candidates.find((candidate) => strictAccentVariantMatch(name, candidate));
   }
 
   private async fetchLogPage(
@@ -360,7 +416,7 @@ function normalizeHeader(header: RawHeader): CharacterHeader {
 
 function normalizeLogEntry(value: unknown): LogEntry {
   const log = value as Record<string, unknown>;
-  for (const field of ["id", "name", "boss", "difficulty", "dps", "ndps", "class", "duration", "timestamp"]) {
+  for (const field of ["id", "name", "boss", "difficulty", "dps", "class", "duration", "timestamp"]) {
     if (log[field] === undefined || log[field] === null) {
       throw new LostArkBibleError("api_shape", `lostark.bible log entry is missing ${field}`);
     }
@@ -372,15 +428,21 @@ function normalizeLogEntry(value: unknown): LogEntry {
     boss: String(log.boss),
     difficulty: String(log.difficulty),
     dps: Number(log.dps),
+    bdps: optionalValueNumber(log.bdps),
     udps: optionalValueNumber(log.udps),
-    ndps: Number(log.ndps),
+    ndps: optionalValueNumber(log.ndps),
     rdps: optionalValueNumber(log.rdps),
+    rContribution: optionalValueNumber(log.rContribution),
     buffs: Array.isArray(log.buffs) ? log.buffs.map(Number) : undefined,
     className: String(log.class),
     spec: log.spec ? String(log.spec) : undefined,
     gearScore: optionalValueNumber(log.gearScore),
     combatPower: optionalValueNumber(log.combatPower),
     percentile: log.percentile === null || log.percentile === undefined ? null : Number(log.percentile),
+    contributionPercentile:
+      log.contributionPercentile === null || log.contributionPercentile === undefined
+        ? null
+        : Number(log.contributionPercentile),
     overallPercentile:
       log.overallPercentile === null || log.overallPercentile === undefined
         ? null
@@ -390,6 +452,67 @@ function normalizeLogEntry(value: unknown): LogEntry {
     isBus: Boolean(log.isBus),
     isDead: Boolean(log.isDead)
   };
+}
+
+export function encodeSearchPayload(name: string, region: Region): string {
+  const json = JSON.stringify([["__skrao", 1], { name: 2, region: 3 }, name, region]);
+  return base64UrlEncode(json);
+}
+
+export function decodeSearchResultNames(data: unknown): string[] {
+  const envelope = data as { type?: unknown; result?: unknown };
+  if (envelope.type !== "result" || typeof envelope.result !== "string") return [];
+
+  try {
+    return uniqueStrings(collectStrings(JSON.parse(envelope.result))).filter(isLikelyCharacterName);
+  } catch {
+    return [];
+  }
+}
+
+export function strictAccentVariantMatch(ocrName: string, candidate: string): boolean {
+  const ocrChars = Array.from(ocrName);
+  const candidateChars = Array.from(candidate);
+  if (ocrChars.length !== candidateChars.length) return false;
+
+  return ocrChars.every((ocrChar, index) => {
+    const candidateChar = candidateChars[index];
+    return candidateChar === ocrChar || foldLatin(candidateChar).toLowerCase() === foldLatin(ocrChar).toLowerCase();
+  });
+}
+
+function base64UrlEncode(value: string): string {
+  if (typeof Buffer !== "undefined") {
+    return Buffer.from(value, "utf8").toString("base64url");
+  }
+
+  return btoa(value)
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/g, "");
+}
+
+function collectStrings(value: unknown): string[] {
+  if (typeof value === "string") return [value];
+  if (Array.isArray(value)) return value.flatMap(collectStrings);
+  if (value && typeof value === "object") return Object.values(value).flatMap(collectStrings);
+  return [];
+}
+
+function uniqueStrings(values: string[]): string[] {
+  return [...new Set(values)];
+}
+
+function isLikelyCharacterName(value: string): boolean {
+  return /^\p{L}[\p{L}\p{N}]{3,15}$/u.test(value);
+}
+
+function foldLatin(value: string): string {
+  return Array.from(value)
+    .map((char) => LATIN_BASE_CHARACTERS[char] ?? char)
+    .join("")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
 }
 
 function errorForStatus(status: number, prefix: string): LostArkBibleError {

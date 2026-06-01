@@ -32,6 +32,13 @@
           Capture
           <input id="captureMode" value="foreground-window-display" disabled />
         </label>
+        <label>
+          Overlay
+          <select id="overlayPosition">
+            <option value="left">Left</option>
+            <option value="right">Right</option>
+          </select>
+        </label>
       </section>
 
       <section class="controls stacked">
@@ -40,6 +47,18 @@
           <button id="showLastResults">Show Last Results</button>
           <button id="openLogs">Open Logs</button>
           <span id="settingsMessage"></span>
+        </div>
+      </section>
+
+      <section class="controls stacked">
+        <div class="calibration-panel">
+          <div>
+            <strong>Calibration</strong>
+            <p id="calibrationStatus">Drag one box around the encounter title and visible character rows.</p>
+          </div>
+          <div class="calibration-buttons">
+            <button id="calibrateLobbyRegion">Calibrate Lobby Region</button>
+          </div>
         </div>
       </section>
 
@@ -111,6 +130,15 @@
       </section>
       <section id="overlayWarnings" class="warnings"></section>
       <section id="overlayResults" class="results overlay-results"></section>
+      <section id="overlayLogPopover" class="log-popover" hidden></section>
+    </main>
+
+    <main id="calibrationView" class="calibration-shell" hidden>
+      <div class="calibration-help">
+        <strong id="calibrationTitle">Calibration</strong>
+        <span>Drag a box. Press Escape to cancel.</span>
+      </div>
+      <div id="calibrationSelection" class="calibration-selection" hidden></div>
     </main>
 
     <script type="module" src="./renderer.js"></script>

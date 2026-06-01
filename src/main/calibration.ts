@@ -10,9 +10,20 @@ export interface CalibrationConfig {
   selectedLobbyRow: Rect;
 }
 
+export type CalibrationRectKey = Exclude<keyof CalibrationConfig, "version">;
+export type CalibrationTarget = CalibrationRectKey | "lobbyRegion";
+
+export const calibrationTargets: CalibrationTarget[] = [
+  "lobbyRegion",
+  "encounterTitle",
+  "applicantList",
+  "memberList",
+  "selectedLobbyRow"
+];
+
 export const defaultCalibration: CalibrationConfig = {
   version: 1,
-  encounterTitle: { x: 2425, y: 205, width: 430, height: 44 },
+  encounterTitle: { x: 2440, y: 235, width: 450, height: 60 },
   applicantList: { x: 2200, y: 385, width: 560, height: 60 },
   memberList: { x: 2185, y: 370, width: 640, height: 460 },
   selectedLobbyRow: { x: 2190, y: 430, width: 360, height: 60 }

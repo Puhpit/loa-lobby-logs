@@ -1,51 +1,31 @@
 export const lostArkBibleEncounterGroups: Record<string, string[]> = {
   Serca: ["Corvus Tul Rak", "Witch of Agony, Serca"],
   Kazeros: ["Death Incarnate Kazeros", "Archdemon Kazeros", "Abyss Lord Kazeros"],
-  Armoche: ["Brelshaza, Ember in the Ashes", "Armoche, Sentinel of the Abyss"],
-  Tarkal: ["Flame of Darkness, Tarkal"],
-  "Act 2: Brelshaza": ["Phantom Manifester Brelshaza", "Narok the Butcher"],
-  Aegir: ["Aegir, the Oppressor", "Akkan, Lord of Death"],
-  Behemoth: ["Behemoth, Cruel Storm Slayer", "Behemoth, the Storm Commander"],
-  Echidna: ["Covetous Master Echidna", "Red Doom Narkiel"],
-  Thaemine: [
-    "Thaemine, Conqueror of Stars",
-    "Thaemine the Lightqueller",
-    "Valinak, Herald of the End",
-    "Killineza the Dark Worshipper"
-  ],
-  "Ivory Tower": [
-    "Lazaram, the Trailblazer",
-    "Firehorn, Trampler of Earth",
-    "Rakathus, the Lurking Arrogance",
-    "Kaltaya, the Blooming Chaos"
-  ],
-  Akkan: [
-    "Lord of Kartheon Akkan",
-    "Plague Legion Commander Akkan",
-    "Lord of Degradation Akkan",
-    "Griefbringer Maurug"
-  ],
-  Kayangel: ["Lauriel", "Prunya", "Tienis"],
-  Brelshaza: [
-    "Phantom Legion Commander Brelshaza",
-    "Brelshaza, Monarch of Nightmares",
-    "Primordial Nightmare",
-    "Ashtarot",
-    "Gehenna Helkasirs"
-  ],
-  "Kakul-Saydon": ["Kakul-Saydon", "Kakul", "Saydon"],
-  Vykas: [
-    "Covetous Legion Commander Vykas",
-    "Covetous Devourer Vykas",
-    "Nightmarish Morphe",
-    "Incubus Morphe"
-  ],
-  Valtan: ["Ravaged Tyrant of Beasts", "Dark Mountain Predator"]
+  Mordum: ["Mordum, the Abyssal Punisher", "Flash of Punishment", "Blossoming Fear, Naitreya", "Infernas"],
+  Armoche: ["Brelshaza, Ember in the Ashes", "Armoche, Sentinel of the Abyss"]
+};
+
+const visibleEncounterAliases: Record<string, string> = {
+  "mount antares": "Mordum",
+  "fortress of destruction": "Armoche",
+  "final day": "Kazeros",
+  "sanctum of frost": "Serca"
 };
 
 export function bossGroupForVisibleEncounter(visibleText: string): string | undefined {
-  const normalized = visibleText.toLowerCase();
-  return Object.keys(lostArkBibleEncounterGroups).find((group) =>
-    normalized.includes(group.toLowerCase())
-  );
+  const normalized = normalizeVisibleEncounter(visibleText);
+
+  for (const [alias, group] of Object.entries(visibleEncounterAliases)) {
+    if (normalized.includes(alias)) return group;
+  }
+
+  return undefined;
+}
+
+function normalizeVisibleEncounter(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[\[\]]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }

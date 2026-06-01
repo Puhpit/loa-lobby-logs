@@ -75,15 +75,18 @@ Observed log entries include:
   boss: "Armoche, Sentinel of the Abyss",
   difficulty: "Hard",
   dps: 837519948,
+  bdps: undefined,
   udps: 501659099,
   ndps: 372845001,
   rdps: 405038937,
+  rContribution: undefined,
   buffs: [0.9866, 0.9957, 0.8295, 0.5937],
   class: "Sorceress",
   spec: "Igniter",
   gearScore: 1765,
   combatPower: 5385.51,
   percentile: 0.785,
+  contributionPercentile: undefined,
   overallPercentile: 0.925,
   duration: 296830,
   timestamp: 1779941776795,
@@ -92,30 +95,76 @@ Observed log entries include:
 }
 ```
 
+Support log rows use the same log endpoint, but the site switches display semantics when `spec` is one of:
+
+```ts
+["Desperate Salvation", "Full Bloom", "Blessed Aura", "Liberator"]
+```
+
+For support rows, lostark.bible displays `contributionPercentile` and `percentile` as two badges, displays the four `buffs` values as AP / Brand / Identity / T percentages, and displays `rContribution` as an `r` contribution percentage. For DPS rows, it displays `percentile`, `dps`, and `ndps`, with `udps` only as a fallback.
+
+Decoded site source color thresholds:
+
+```ts
+// Uses Math.floor(percentile * 100)
+100: { text: "#dcc999", background: "#e5cc80" }
+99:  { text: "#FF69B4", background: "#ee59a5" }
+95+: { text: "#FFA441", background: "#ff8000" }
+75+: { text: "#ce84ff", background: "#a75ed5" }
+50+: { text: "#0096ff", background: "#0096ff" }
+25+: { text: "#3dd351", background: "#3dd351" }
+else:{ text: "#afafaf", background: "#6a6a6a" }
+```
+
+Support performance text colors are AP red, Brand green, Identity yellow, and T blue.
+
 ## Encounter Groups
 
-The route JS contains useful boss groups. Initial map:
+The app intentionally supports only the in-game labels currently needed by the overlay. The supported lostark.bible boss groups are:
 
 ```ts
 {
   Serca: ["Corvus Tul Rak", "Witch of Agony, Serca"],
   Kazeros: ["Death Incarnate Kazeros", "Archdemon Kazeros", "Abyss Lord Kazeros"],
-  Armoche: ["Brelshaza, Ember in the Ashes", "Armoche, Sentinel of the Abyss"],
-  Tarkal: ["Flame of Darkness, Tarkal"],
-  "Act 2: Brelshaza": ["Phantom Manifester Brelshaza", "Narok the Butcher"],
-  Aegir: ["Aegir, the Oppressor", "Akkan, Lord of Death"],
-  Behemoth: ["Behemoth, Cruel Storm Slayer", "Behemoth, the Storm Commander"],
-  Echidna: ["Covetous Master Echidna", "Red Doom Narkiel"],
-  Thaemine: [
-    "Thaemine, Conqueror of Stars",
-    "Thaemine the Lightqueller",
-    "Valinak, Herald of the End",
-    "Killineza the Dark Worshipper"
-  ]
+  Mordum: ["Mordum, the Abyssal Punisher", "Flash of Punishment", "Blossoming Fear, Naitreya", "Infernas"],
+  Armoche: ["Brelshaza, Ember in the Ashes", "Armoche, Sentinel of the Abyss"]
 }
 ```
 
-The visible Lost Ark encounter text should map to these groups where possible. Unknown encounter text falls back to recent logs.
+Unknown encounter text falls back to recent logs.
+
+Observed in-game lobby labels are aliases for encounter groups, not gates:
+
+```ts
+{
+  "Mount Antares": "Mordum",
+  "Fortress of Destruction": "Armoche",
+  "Final Day": "Kazeros",
+  "Sanctum of Frost": "Serca"
+}
+```
+
+Bracketed lobby labels such as `[Normal]`, `[Hard]`, `[Nightmare]`, and `[The First]` are difficulty labels. The lobby does not expose the gate, so the app filters by encounter group and difficulty, then displays the latest matching log while exposing recent matching logs in the overlay details.
+
+HAR captures did not show an explicit in-game alias map. Character-log filters use boss-group arrays. Ranking requests encode both boss and difficulty; for example, captured Kazeros ranking requests paired `Death Incarnate Kazeros` with `The First`, which supports treating `[The First] Final Day` as Kazeros filtered to `The First` difficulty.
+
+`local/lostark.bible.5.har` confirmed the official lostark.bible Mordum group as `Mordum, the Abyssal Punisher`, `Flash of Punishment`, `Blossoming Fear, Naitreya`, and `Infernas`.
+
+## Search Endpoint
+
+The home-page search bar uses a SvelteKit remote endpoint:
+
+```text
+GET https://lostark.bible/_app/remote/ngsbie/search?payload={base64url-json}
+```
+
+Observed payload shape for `name=Freak`, `region=NA`:
+
+```json
+[["__skrao",1],{"name":2,"region":3},"Freak","NA"]
+```
+
+The response envelope contains a JSON string in `result`. The app treats this endpoint as best-effort because the remote ID may change. It is used only after direct character lookup fails, and only for strict accent recovery: same character count, same positions, and each differing character must accent-fold to the OCR character.
 
 ## Implementation Notes
 

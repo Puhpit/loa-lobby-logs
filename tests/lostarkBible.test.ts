@@ -1,7 +1,15 @@
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { buildLogsRequestBody, extractPageData, LostArkBibleError, LostArkBibleProvider } from "../src/main/lostarkBible.js";
+import {
+  buildLogsRequestBody,
+  decodeSearchResultNames,
+  encodeSearchPayload,
+  extractPageData,
+  LostArkBibleError,
+  LostArkBibleProvider,
+  strictAccentVariantMatch
+} from "../src/main/lostarkBible.js";
 import type { CharacterHeader } from "../src/shared/types.js";
 
 const fixtureUrl = new URL("./fixtures/pepegami-page.html", import.meta.url);
@@ -174,6 +182,38 @@ describe("LostArkBibleProvider page extraction", () => {
     await expect(invalidApiProvider.getCharacterLogs("NA", "Pepegami")).rejects.toMatchObject({
       code: "api_shape"
     });
+  });
+
+  it("decodes search results and retries exact accent recovery after a missing direct lookup", async () => {
+    const requests: string[] = [];
+    const fetchMock = async (input: RequestInfo | URL): Promise<Response> => {
+      const url = String(input);
+      requests.push(url);
+
+      if (url.endsWith("/character/NA/Freak/logs")) return new Response("missing", { status: 404 });
+      if (url.startsWith("https://lostark.bible/_app/remote/ngsbie/search")) {
+        expect(url).toContain(encodeSearchPayload("Freak", "NA"));
+        return Response.json({ type: "result", result: JSON.stringify([[1, 2], "Frëak", "Frëakk", "Fraek"]) });
+      }
+      if (url.endsWith("/character/NA/Fr%C3%ABak/logs")) return new Response(minimalPage(), { status: 200 });
+      if (url.endsWith("/api/character/logs")) return Response.json([]);
+      throw new Error(`Unexpected URL ${url}`);
+    };
+
+    const result = await new LostArkBibleProvider(fetchMock as typeof fetch).getCharacterLogs("NA", "Freak", 1);
+
+    expect(result.name).toBe("Frëak");
+    expect(result.resolvedFromSearch).toBe("Freak");
+    expect(requests).toContain("https://lostark.bible/character/NA/Freak/logs");
+    expect(requests).toContain("https://lostark.bible/character/NA/Fr%C3%ABak/logs");
+  });
+
+  it("strict accent recovery rejects length changes, swaps, and substitutions", () => {
+    expect(decodeSearchResultNames({ type: "result", result: JSON.stringify(["Frëak"]) })).toEqual(["Frëak"]);
+    expect(strictAccentVariantMatch("Freak", "Frëak")).toBe(true);
+    expect(strictAccentVariantMatch("Freak", "Frëakk")).toBe(false);
+    expect(strictAccentVariantMatch("Freak", "Fëark")).toBe(false);
+    expect(strictAccentVariantMatch("Freak", "Fraek")).toBe(false);
   });
 });
 

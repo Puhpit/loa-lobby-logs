@@ -15,6 +15,17 @@ body {
   background: #101417;
 }
 
+.calibration-html,
+.calibration-html body,
+.calibration-body {
+  background: transparent;
+}
+
+.calibration-body {
+  min-width: 0;
+  overflow: hidden;
+}
+
 [hidden] {
   display: none !important;
 }
@@ -60,7 +71,7 @@ p {
 }
 
 .controls.settings-grid {
-  grid-template-columns: 112px 180px 1fr;
+  grid-template-columns: 112px 180px 1fr 120px;
 }
 
 .controls.stacked {
@@ -173,7 +184,7 @@ button:disabled {
 .summary-strip span,
 .metric span {
   color: #91a1a5;
-  font-size: 11px;
+  font-size: 10px;
   text-transform: uppercase;
 }
 
@@ -188,8 +199,9 @@ button:disabled {
 }
 
 .row {
+  position: relative;
   display: grid;
-  grid-template-columns: minmax(120px, 1fr) repeat(3, 86px);
+  grid-template-columns: minmax(180px, 1fr) 88px 112px 112px;
   gap: 8px;
   align-items: center;
   background: #182024;
@@ -211,10 +223,34 @@ button:disabled {
 }
 
 .meta,
+.encounter-tag,
 .flags,
 .error {
   color: #91a1a5;
-  font-size: 12px;
+  font-size: 11px;
+}
+
+.calibration-panel {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 12px;
+}
+
+.calibration-panel strong {
+  font-size: 14px;
+}
+
+.calibration-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.encounter-tag {
+  margin-top: 3px;
+  color: #b8c8cc;
 }
 
 .flags {
@@ -234,7 +270,78 @@ button:disabled {
 }
 
 .metric strong {
-  font-size: 17px;
+  font-size: 16px;
+}
+
+.badge-stack {
+  display: inline-flex;
+  justify-content: flex-end;
+  gap: 3px;
+}
+
+.percentile-badge {
+  min-width: 24px;
+  height: 18px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 9px;
+  padding: 0 6px;
+  font-size: 12px;
+  line-height: 1;
+  color: #f8fbff;
+  text-shadow: 0 1px 1px rgb(0 0 0 / 40%);
+}
+
+.support-performance {
+  display: inline-flex;
+  gap: 2px;
+  font-size: 13px;
+}
+
+.metric i {
+  display: inline-grid;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  background: #41494d;
+  color: #c6d0d3;
+  font-size: 10px;
+  font-style: normal;
+}
+
+.log-popover {
+  position: fixed;
+  z-index: 20;
+  display: grid;
+  gap: 4px;
+  max-height: 220px;
+  overflow: auto;
+  padding: 8px;
+  border: 1px solid #3a484d;
+  border-radius: 6px;
+  background: #11181b;
+  box-shadow: 0 10px 28px rgb(0 0 0 / 42%);
+  -webkit-app-region: no-drag;
+}
+
+.log-popover[hidden] {
+  display: none;
+}
+
+.log-detail-row {
+  display: grid;
+  grid-template-columns: minmax(140px, 1fr) 42px 86px 76px 48px 48px;
+  gap: 8px;
+  align-items: center;
+  color: #d9e2e4;
+  font-size: 11px;
+}
+
+.log-detail-row span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .empty {
@@ -264,6 +371,7 @@ button:disabled {
   gap: 10px;
   grid-template-rows: auto auto auto 1fr;
   background: #101417;
+  overflow: auto;
 }
 
 .overlay-header {
@@ -299,7 +407,54 @@ button:disabled {
 }
 
 .overlay-results .row {
-  grid-template-columns: minmax(120px, 1fr) repeat(3, 76px);
+  grid-template-columns: minmax(180px, 1fr) 88px 112px 112px;
+}
+
+.calibration-shell {
+  position: fixed;
+  inset: 0;
+  cursor: crosshair;
+  user-select: none;
+  background: transparent;
+}
+
+.calibration-shell::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background: rgb(0 0 0 / 16%);
+  pointer-events: none;
+}
+
+.calibration-help {
+  position: fixed;
+  top: 18px;
+  left: 50%;
+  z-index: 2;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  transform: translateX(-50%);
+  padding: 9px 12px;
+  border: 1px solid #4e6269;
+  border-radius: 6px;
+  background: #101417;
+  color: #eef3f2;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 40%);
+}
+
+.calibration-help span {
+  color: #aebcc0;
+  font-size: 12px;
+}
+
+.calibration-selection {
+  position: fixed;
+  z-index: 3;
+  border: 2px solid #5fd0e7;
+  background: rgb(95 208 231 / 18%);
+  box-shadow: 0 0 0 9999px rgb(0 0 0 / 28%);
+  pointer-events: none;
 }
 
 @media (max-width: 640px) {
@@ -310,6 +465,7 @@ button:disabled {
   .controls,
   .controls.settings-grid,
   .controls.compact,
+  .calibration-panel,
   .summary-strip,
   .overlay-summary,
   .row {

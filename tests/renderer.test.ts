@@ -6,11 +6,27 @@ class FakeElement {
   readonly listeners = new Map<string, Array<(event?: any) => unknown>>();
   readonly children: FakeElement[] = [];
   className = "";
+  readonly classList = {
+    add: (...classNames: string[]) => {
+      const names = new Set(this.className.split(/\s+/).filter(Boolean));
+      for (const className of classNames) names.add(className);
+      this.className = [...names].join(" ");
+    },
+    remove: (...classNames: string[]) => {
+      const removeNames = new Set(classNames);
+      this.className = this.className.split(/\s+/).filter((name) => !removeNames.has(name)).join(" ");
+    }
+  };
   hidden = false;
   textContent = "";
   value = "";
   checked = false;
   disabled = false;
+  tabIndex = -1;
+  clientWidth = 720;
+  clientHeight = 760;
+  scrollHeight = 120;
+  style: Record<string, string> = {};
   private html = "";
 
   constructor(readonly tagName = "div", readonly id = "") {}
@@ -23,8 +39,8 @@ class FakeElement {
     this.html = value;
     this.children.length = 0;
 
-    for (const className of ["identity", "name", "meta", "flags", "error", "metric", "empty"]) {
-      if (!value.includes(`class="${className}"`)) continue;
+    for (const className of ["identity", "name", "meta", "encounter-tag", "flags", "error", "metric", "empty", "log-detail-row"]) {
+      if (!value.includes(`class="${className}`)) continue;
       const child = new FakeElement("div");
       child.className = className;
       this.children.push(child);
@@ -50,6 +66,20 @@ class FakeElement {
     return this.find((element) => element.className.split(/\s+/).includes(className));
   }
 
+  getBoundingClientRect(): DOMRect {
+    return {
+      x: 10,
+      y: 10,
+      left: 10,
+      top: 10,
+      right: 690,
+      bottom: 82,
+      width: 680,
+      height: 72,
+      toJSON: () => ({})
+    } as DOMRect;
+  }
+
   private find(predicate: (element: FakeElement) => boolean): FakeElement | undefined {
     if (predicate(this)) return this;
     for (const child of this.children) {
@@ -62,6 +92,7 @@ class FakeElement {
 
 class FakeDocument {
   readonly body = new FakeElement("body");
+  readonly documentElement = new FakeElement("html");
   private readonly elements = new Map<string, FakeElement>();
 
   constructor(ids: string[]) {
@@ -92,6 +123,7 @@ class FakeWindow {
 
 const overlayIds = [
   "settingsView",
+  "calibrationView",
   "overlayView",
   "dismissOverlay",
   "overlayEncounter",
@@ -99,11 +131,13 @@ const overlayIds = [
   "overlayUpdated",
   "overlayStatus",
   "overlayWarnings",
-  "overlayResults"
+  "overlayResults",
+  "overlayLogPopover"
 ];
 
 const settingsIds = [
   "settingsView",
+  "calibrationView",
   "overlayView",
   "status",
   "settingsResults",
@@ -117,9 +151,12 @@ const settingsIds = [
   "server",
   "scanHotkey",
   "captureMode",
+  "overlayPosition",
   "saveSettings",
   "showLastResults",
   "openLogs",
+  "calibrationStatus",
+  "calibrateLobbyRegion",
   "chooseScreenshot",
   "encounter",
   "manualNames",
@@ -159,8 +196,34 @@ describe("renderer boot", () => {
     expect(document.getElementById("overlayDetected")!.textContent).toBe("1");
     expect(document.getElementById("overlayStatus")!.textContent).toBe("Dark Baratron");
     expect(document.getElementById("overlayResults")!.children).toHaveLength(1);
-    expect(document.getElementById("overlayResults")!.children[0].querySelector(".name")?.textContent).toBe("Pepegami");
+    const row = document.getElementById("overlayResults")!.children[0];
+    expect(row.querySelector(".name")?.textContent).toBe("Pepegami");
+    expect(row.innerHTML).toContain("nDPS/uDPS");
+    expect(row.innerHTML).toContain("percentile-badge");
+    expect(row.innerHTML).toContain(">99</b>");
+    expect(row.innerHTML).not.toContain("log-details");
     expect(api.events.map((event) => event.event)).toContain("overlay.result.rendered");
+  });
+
+  it("renders hover logs into an overlay-level popover", async () => {
+    const document = new FakeDocument(overlayIds);
+    const window = new FakeWindow({ href: "app://index.html?view=overlay", search: "?view=overlay" });
+    const api = createApi();
+    window.loaLobbyLogs = api;
+
+    bootRenderer({ window: window as unknown as Window, document: document as unknown as Document });
+    await flushPromises();
+
+    api.emitScanResult(scanResult());
+    await flushPromises();
+    await document.getElementById("overlayResults")!.children[0].trigger("pointerenter");
+
+    const popover = document.getElementById("overlayLogPopover")!;
+    expect(popover.hidden).toBe(false);
+    expect(popover.innerHTML).toContain("Hard");
+    expect(popover.innerHTML).toContain("Dark Baratron");
+    expect(popover.innerHTML).toContain("306.5M");
+    expect(document.getElementById("overlayResults")!.children[0].innerHTML).not.toContain("log-detail-row");
   });
 
   it("wires settings buttons to their expected APIs", async () => {
@@ -176,12 +239,14 @@ describe("renderer boot", () => {
 
     bootRenderer({ window: window as unknown as Window, document: document as unknown as Document });
     await flushPromises();
+    document.getElementById("overlayPosition")!.value = "right";
 
     await document.getElementById("saveSettings")!.trigger("click");
     await document.getElementById("scanNow")!.trigger("click");
     await document.getElementById("reviewLobby")!.trigger("click");
 
     expect(api.saveSettingsCalls).toBe(1);
+    expect(api.savedSettings?.overlayPosition).toBe("right");
     expect(api.startScanCalls).toBe(1);
     expect(api.reviewLobbyCalls).toBe(1);
     expect(api.events).toContainEqual({ event: "button.click", data: { action: "settings.save" } });
@@ -196,6 +261,7 @@ function createApi(): AppApi & {
   saveSettingsCalls: number;
   startScanCalls: number;
   reviewLobbyCalls: number;
+  savedSettings?: AppSettings;
   emitScanResult(result: ScanResult): void;
 } {
   const events: Array<{ event: string; data?: Record<string, unknown> }> = [];
@@ -204,7 +270,7 @@ function createApi(): AppApi & {
     server: "NA",
     scanHotkey: "Ctrl+Alt+D",
     captureMode: "foreground-window-display",
-    overlayPosition: "right"
+    overlayPosition: "left"
   };
 
   const api: AppApi & {
@@ -213,6 +279,7 @@ function createApi(): AppApi & {
     saveSettingsCalls: number;
     startScanCalls: number;
     reviewLobbyCalls: number;
+    savedSettings?: AppSettings;
     emitScanResult(result: ScanResult): void;
   } = {
     events,
@@ -238,8 +305,10 @@ function createApi(): AppApi & {
       api.dismissOverlayCalls += 1;
     },
     getSettings: async () => settings,
-    saveSettings: async () => {
+    saveSettings: async (nextSettings) => {
       api.saveSettingsCalls += 1;
+      api.savedSettings = nextSettings;
+      Object.assign(settings, nextSettings);
       return settings;
     },
     openLogs: async () => "diagnostics.jsonl",
@@ -259,6 +328,8 @@ function createApi(): AppApi & {
       selectedLobbyRow: { x: 0, y: 0, width: 1, height: 1 }
     }),
     saveCalibration: async (config) => config,
+    startCalibration: async () => undefined,
+    completeCalibration: async () => undefined,
     setAlwaysOnTop: async () => true,
     emitScanResult: (result) => {
       for (const listener of listeners) listener(result);
@@ -269,6 +340,23 @@ function createApi(): AppApi & {
 }
 
 function scanResult(): ScanResult {
+  const selectedLog = {
+    id: "log-1",
+    name: "Pepegami",
+    boss: "Dark Baratron",
+    difficulty: "Hard",
+    dps: 1_077_347_781,
+    ndps: 306_477_091,
+    className: "Sorceress",
+    spec: "Igniter",
+    gearScore: 1765,
+    percentile: 0.99,
+    duration: 480,
+    timestamp: Date.now(),
+    isBus: false,
+    isDead: false
+  };
+
   return {
     encounter: { visibleText: "Dark Baratron", groupName: "Dark Baratron", bosses: ["Dark Baratron"] },
     candidates: [{
@@ -283,6 +371,14 @@ function scanResult(): ScanResult {
       className: "Sorceress",
       spec: "Igniter",
       gearScore: 1765,
+      selectedLog,
+      recentEncounterLogs: [selectedLog],
+      displayMetrics: {
+        role: "dps",
+        percentileBadges: [{ value: 0.99, label: "99", textColor: "#FF69B4", backgroundColor: "#ee59a5" }],
+        performance: [{ label: "DPS", value: "1.1B" }],
+        ndps: { label: "nDPS", marker: "n", value: "306.5M" }
+      },
       currentEncounterLogs: [],
       recentOtherLogs: [],
       bestPercentile: 0.99,

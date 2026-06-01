@@ -36,15 +36,18 @@ export interface LogEntry {
   boss: string;
   difficulty: string;
   dps: number;
+  bdps?: number;
   udps?: number;
-  ndps: number;
+  ndps?: number;
   rdps?: number;
+  rContribution?: number;
   buffs?: number[];
   className: string;
   spec?: string;
   gearScore?: number;
   combatPower?: number;
   percentile: number | null;
+  contributionPercentile?: number | null;
   overallPercentile?: number | null;
   duration: number;
   timestamp: number;
@@ -55,10 +58,32 @@ export interface LogEntry {
 export interface CharacterLogsResult {
   region: Region;
   name: string;
+  resolvedFromSearch?: string;
   header?: CharacterHeader;
   logsEnabled: boolean;
   isPublic: boolean;
   logs: LogEntry[];
+}
+
+export interface PercentileBadge {
+  value: number;
+  label: string;
+  textColor: string;
+  backgroundColor: string;
+}
+
+export interface SelectedLogMetric {
+  label: string;
+  value: string;
+  marker?: string;
+  color?: string;
+}
+
+export interface CharacterDisplayMetrics {
+  role: "dps" | "support";
+  percentileBadges: PercentileBadge[];
+  performance: SelectedLogMetric[];
+  ndps: SelectedLogMetric;
 }
 
 export interface CharacterLogsQueryOptions {
@@ -71,6 +96,9 @@ export interface CharacterSummary {
   className?: string;
   spec?: string;
   gearScore?: number;
+  selectedLog?: LogEntry;
+  recentEncounterLogs: LogEntry[];
+  displayMetrics?: CharacterDisplayMetrics;
   currentEncounterLogs: LogEntry[];
   recentOtherLogs: LogEntry[];
   bestPercentile: number | null;
@@ -88,6 +116,7 @@ export type SummaryFlag =
   | "character-not-found"
   | "session-expired"
   | "ocr-uncertain"
+  | "ocr-search-corrected"
   | "scrape-failed"
   | "rate-limited"
   | "no-encounter-match";

@@ -2,16 +2,17 @@
 
 LOA Lobby Logs is a personal Windows overlay for Lost Ark lobby and applicant screening.
 
-It captures the visible Lost Ark lobby/applicant UI, extracts character names with OCR, fetches public lostark.bible log data, and shows a compact overlay ranked by percentile, DPS, and nDPS.
+It captures the visible Lost Ark lobby/applicant UI, extracts character names with OCR, fetches public lostark.bible log data, and shows a compact overlay with role-aware percentile, performance, and nDPS/uDPS data.
 
 ## Usage
 
 1. Install dependencies with `npm install`.
 2. Start the app with `npm start`, or run the packaged portable executable.
 3. Open settings from the tray icon.
-4. With Lost Ark focused, press `Ctrl+Alt+D` to scan the visible lobby/applicant area.
-5. Review the right-side overlay. Use the overlay close button to dismiss it.
-6. Use the settings window for manual review/test scans when OCR is not the focus.
+4. Use the calibration button in settings to drag one box over the live Lost Ark display containing the encounter title and visible character rows.
+5. With Lost Ark focused, press `Ctrl+Alt+D` to scan the visible lobby/applicant area.
+6. Review the overlay. It defaults to the left side and can be moved to the right side from settings. Use the overlay close button to dismiss it.
+7. Use the settings window for manual review/test scans when OCR is not the focus.
 
 ## Architecture
 
@@ -26,12 +27,12 @@ Main process:
 Preload and renderer:
 
 - `src/main/preload.cts` compiles to `dist/src/main/preload.cjs`. Electron windows load this CommonJS preload so `window.loaLobbyLogs` is exposed reliably.
-- `src/renderer/renderer.ts` is one renderer bundle with `?view=settings` and `?view=overlay` modes.
+- `src/renderer/renderer.ts` is one renderer bundle with `?view=settings`, `?view=overlay`, and `?view=calibration` modes.
 - Renderer boot installs error handlers first, verifies preload availability, logs boot/click/render diagnostics, and shows a visible fatal message if the preload bridge is missing.
 
 Data flow:
 
 - The scan hotkey captures the display containing Lost Ark.
-- OCR reads calibrated lobby/applicant/member regions into character candidates.
+- OCR reads the calibrated lobby region into encounter text and character candidates. Calibration rectangles are saved in screenshot pixel coordinates after the user drags a live screen region.
 - The pipeline deduplicates candidates, resolves visible encounter text, fetches public lostark.bible logs, and builds overlay-ready summaries.
 - The overlay renders rows from the latest scan result and can fall back to the last result when it initializes.
