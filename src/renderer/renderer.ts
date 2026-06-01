@@ -1,5 +1,5 @@
 import type { Region } from "../shared/types.js";
-import type { AppApi, OverlayPosition, ScanResult } from "../shared/appTypes.js";
+import type { AppApi, OverlayPosition, ScanProgress, ScanResult } from "../shared/appTypes.js";
 import type { CharacterDisplayMetrics, LogEntry, SelectedLogMetric } from "../shared/types.js";
 import type { CalibrationTarget } from "../main/calibration.js";
 
@@ -72,16 +72,9 @@ function renderFatalPreloadError(documentObj: Document): void {
 function initSettings(env: RendererEnvironment, api: AppApi): void {
   void reportRendererEvent(api, "settings.init");
   const statusEl = byId(env.document, "status");
-  const resultsEl = byId(env.document, "settingsResults");
   const scanButton = byId<HTMLButtonElement>(env.document, "scanNow");
-  const reviewButton = byId<HTMLButtonElement>(env.document, "reviewLobby");
-  const screenshotPathEl = byId(env.document, "screenshotPath");
-  const candidateCountEl = byId(env.document, "candidateCount");
-  const encounterSummaryEl = byId(env.document, "encounterSummary");
-  const updatedAtEl = byId(env.document, "updatedAt");
   const settingsMessageEl = byId(env.document, "settingsMessage");
   const calibrationStatusEl = byId(env.document, "calibrationStatus");
-  let screenshotPath: string | undefined;
 
   byId(env.document, "calibrationView").hidden = true;
   byId(env.document, "overlayView").hidden = true;
@@ -93,6 +86,7 @@ function initSettings(env: RendererEnvironment, api: AppApi): void {
     byId<HTMLInputElement>(env.document, "captureMode").value = settings.captureMode;
     byId<HTMLSelectElement>(env.document, "overlayPosition").value = settings.overlayPosition;
   });
+  void refreshCalibrationStatus(env.document, api);
 
   byId<HTMLButtonElement>(env.document, "saveSettings").addEventListener("click", async () => {
     void reportClick(api, "settings.save");
@@ -110,19 +104,11 @@ function initSettings(env: RendererEnvironment, api: AppApi): void {
     setBusy(scanButton, true, statusEl, "Scanning...");
     try {
       const output = await api.startScan();
-      renderSummary(output, encounterSummaryEl, candidateCountEl, updatedAtEl);
-      renderRows(env.document, output.summaries, resultsEl);
-      setBusy(scanButton, false, statusEl, `Loaded ${output.summaries.length} character${output.summaries.length === 1 ? "" : "s"}`);
+      setBusy(scanButton, false, statusEl, output ? `Loaded ${output.summaries.length} character${output.summaries.length === 1 ? "" : "s"}` : "Calibration required");
     } catch (error) {
       setBusy(scanButton, false, statusEl, errorMessage(error));
       void api.reportRendererError("settings.scanNow.failed", { message: errorMessage(error) });
     }
-  });
-
-  byId<HTMLButtonElement>(env.document, "showLastResults").addEventListener("click", async () => {
-    void reportClick(api, "settings.showLastResults");
-    const shown = await api.showLastResults();
-    settingsMessageEl.textContent = shown ? "Showing last results" : "No scan results yet";
   });
 
   byId<HTMLButtonElement>(env.document, "openLogs").addEventListener("click", async () => {
@@ -135,38 +121,7 @@ function initSettings(env: RendererEnvironment, api: AppApi): void {
     }
   });
 
-  byId<HTMLButtonElement>(env.document, "chooseScreenshot").addEventListener("click", async () => {
-    void reportClick(api, "settings.chooseScreenshot");
-    screenshotPath = await api.chooseScreenshot();
-    screenshotPathEl.textContent = screenshotPath ?? "";
-  });
-
   installCalibrationButton(env.document, api, "calibrateLobbyRegion", "lobbyRegion", calibrationStatusEl);
-
-  reviewButton.addEventListener("click", async () => {
-    void reportClick(api, "settings.reviewLobby");
-    setBusy(reviewButton, true, statusEl, "Reviewing lobby...");
-    resultsEl.innerHTML = "";
-
-    try {
-      const output = await api.reviewLobby({
-        region: byId<HTMLSelectElement>(env.document, "server").value as Region,
-        visibleEncounterText: byId<HTMLInputElement>(env.document, "encounter").value,
-        manualNames: byId<HTMLTextAreaElement>(env.document, "manualNames").value.split(/\r?\n|,/).map((name) => name.trim()).filter(Boolean),
-        screenshotPath,
-        useScreenshotOcr: byId<HTMLInputElement>(env.document, "useOcr").checked,
-        pages: Number(byId<HTMLInputElement>(env.document, "pages").value) || 3
-      });
-
-      renderSummary(output, encounterSummaryEl, candidateCountEl, updatedAtEl);
-      renderRows(env.document, output.summaries, resultsEl);
-      setBusy(reviewButton, false, statusEl, `Loaded ${output.summaries.length} character${output.summaries.length === 1 ? "" : "s"}`);
-    } catch (error) {
-      setBusy(reviewButton, false, statusEl, errorMessage(error));
-      void api.reportRendererError("settings.reviewLobby.failed", { message: errorMessage(error) });
-      resultsEl.innerHTML = `<div class="empty">Review failed</div>`;
-    }
-  });
 }
 
 function initOverlay(env: RendererEnvironment, api: AppApi): void {
@@ -180,6 +135,11 @@ function initOverlay(env: RendererEnvironment, api: AppApi): void {
     void reportClick(api, "overlay.dismiss");
     void reportRendererEvent(api, "overlay.dismiss.clicked");
     await api.dismissOverlay();
+  });
+
+  byId<HTMLButtonElement>(env.document, "openSettingsFromOverlay").addEventListener("click", async () => {
+    void reportClick(api, "overlay.openSettings");
+    await api.openSettings();
   });
 
   env.window.addEventListener("keydown", async (event) => {
@@ -200,6 +160,10 @@ function initOverlay(env: RendererEnvironment, api: AppApi): void {
     renderOverlayResult(env.document, api, result);
   });
 
+  api.onScanProgressUpdated((progress) => {
+    renderOverlayProgress(env.document, progress);
+  });
+
   void renderLatestOverlayResult(env.document, api);
 }
 
@@ -210,6 +174,7 @@ async function renderLatestOverlayResult(documentObj: Document, api: AppApi): Pr
 }
 
 export function renderOverlayResult(documentObj: Document, api: AppApi, result: ScanResult): void {
+  hideOverlayProgress(documentObj);
   renderSummary(result, byId(documentObj, "overlayEncounter"), byId(documentObj, "overlayDetected"), byId(documentObj, "overlayUpdated"));
   byId(documentObj, "overlayStatus").textContent = (result.encounter.groupName ?? result.encounter.visibleText) || "Unknown encounter";
   renderWarnings(documentObj, result);
@@ -219,6 +184,29 @@ export function renderOverlayResult(documentObj: Document, api: AppApi, result: 
     summaries: result.summaries.length,
     warnings: result.warnings.length
   });
+}
+
+function renderOverlayProgress(documentObj: Document, progress: ScanProgress): void {
+  const progressEl = byId(documentObj, "overlayProgress");
+  const titleEl = byId(documentObj, "overlayProgressTitle");
+  const messageEl = byId(documentObj, "overlayProgressMessage");
+  const settingsButton = byId<HTMLButtonElement>(documentObj, "openSettingsFromOverlay");
+  progressEl.hidden = false;
+  titleEl.textContent = progress.stage === "needs-calibration"
+    ? "Calibration Required"
+    : progress.stage === "error"
+      ? "Scan Failed"
+      : "Scanning";
+  messageEl.textContent = progress.message;
+  settingsButton.hidden = progress.stage !== "needs-calibration";
+  if (progress.stage !== "needs-calibration") {
+    byId(documentObj, "overlayWarnings").hidden = true;
+  }
+}
+
+function hideOverlayProgress(documentObj: Document): void {
+  byId(documentObj, "overlayProgress").hidden = true;
+  byId<HTMLButtonElement>(documentObj, "openSettingsFromOverlay").hidden = true;
 }
 
 function renderSummary(
@@ -260,8 +248,6 @@ function renderRows(documentObj: Document, summaries: ScanResult["summaries"], r
           <span class="name"></span>
           <div class="meta"></div>
           <div class="encounter-tag"></div>
-          <div class="flags"></div>
-          <div class="error"></div>
         </div>
         ${percentileMetric(summary)}
         ${performanceMetric(summary)}
@@ -269,14 +255,12 @@ function renderRows(documentObj: Document, summaries: ScanResult["summaries"], r
       `;
 
       row.querySelector(".name")!.textContent = summary.name;
-      row.querySelector(".meta")!.textContent = [summary.className, summary.spec, summary.gearScore ? `ilvl ${summary.gearScore}` : ""]
+      row.querySelector(".meta")!.textContent = [summary.className, summary.spec, summary.gearScore ? `ilvl ${formatItemLevel(summary.gearScore)}` : ""]
         .filter(Boolean)
         .join(" | ");
       row.querySelector(".encounter-tag")!.textContent = summary.selectedLog
         ? [summary.selectedLog.difficulty, summary.selectedLog.boss].filter(Boolean).join(" | ")
         : "";
-      row.querySelector(".flags")!.textContent = summary.flags.join(" | ");
-      row.querySelector(".error")!.textContent = summary.errorMessage ?? "";
       row.addEventListener("pointerenter", () => showLogPopover(documentObj, row, summary));
       row.addEventListener("focusin", () => showLogPopover(documentObj, row, summary));
       row.addEventListener("pointerleave", () => hideLogPopover(documentObj));
@@ -348,10 +332,23 @@ function installCalibrationButton(
       statusEl.textContent = config
         ? `${calibrationLabel(target)} saved: ${formatRect(rectForCalibrationTarget(config, target))}`
         : "Calibration cancelled";
+      await refreshCalibrationStatus(documentObj, api);
     } catch (error) {
       statusEl.textContent = errorMessage(error);
     }
   });
+}
+
+async function refreshCalibrationStatus(documentObj: Document, api: AppApi): Promise<void> {
+  const statusEl = byId(documentObj, "calibrationStatus");
+  try {
+    const status = await api.getCalibrationStatus();
+    statusEl.textContent = status.configured
+      ? `Lobby region: ${formatRect(status.config.applicantList)}`
+      : "Calibration not set";
+  } catch (error) {
+    statusEl.textContent = errorMessage(error);
+  }
 }
 
 function calibrationLabel(target: CalibrationTarget): string {
@@ -433,19 +430,29 @@ function showLogPopover(documentObj: Document, row: HTMLElement, summary: ScanRe
   const popover = documentObj.getElementById("overlayLogPopover");
   if (!popover || summary.recentEncounterLogs.length === 0) return;
 
-  popover.innerHTML = summary.recentEncounterLogs.map((log) => {
+  const role = summary.displayMetrics?.role ?? "dps";
+  popover.innerHTML = `
+    <div class="log-detail-row header">
+      <strong>Encounter</strong>
+      <strong>${role === "support" ? "Percentiles" : "Percentile"}</strong>
+      <strong>${role === "support" ? "AP / Brand / Identity / T" : "DPS"}</strong>
+      <strong>${role === "support" ? "rDPS" : "nDPS/uDPS"}</strong>
+      <strong>Duration</strong>
+      <strong>Cleared</strong>
+    </div>
+    ${summary.recentEncounterLogs.map((log) => {
     const metrics = displayMetricsForLog(log);
     return `
       <div class="log-detail-row">
-        <span>${escapeHtml(log.difficulty)} ${escapeHtml(log.boss)}</span>
-        <span>${formatPercent(log.percentile)}</span>
+        <span class="encounter-cell">${difficultyChip(log.difficulty)}${gateChip(log.boss)}<span>${escapeHtml(log.boss)}</span></span>
+        <span>${metrics.role === "support" ? formatSupportPercentiles(log) : formatPercent(log.percentile)}</span>
         <span>${formatMetricEntries(metrics.performance)}</span>
         <span>${metrics.ndps.value}</span>
         <span>${formatDuration(log.duration)}</span>
         <span>${formatAge(log.timestamp)}</span>
       </div>
     `;
-  }).join("");
+  }).join("")}`;
   popover.hidden = false;
   positionLogPopover(documentObj, popover, row);
 }
@@ -462,7 +469,8 @@ function positionLogPopover(documentObj: Document, popover: HTMLElement, row: HT
   const viewportWidth = documentObj.documentElement.clientWidth || 720;
   const viewportHeight = documentObj.documentElement.clientHeight || 760;
   const popoverWidth = Math.min(680, viewportWidth - 24);
-  const popoverHeight = Math.min(220, Math.max(120, popover.scrollHeight || 120));
+  const measuredHeight = popover.getBoundingClientRect().height || popover.scrollHeight || 120;
+  const popoverHeight = Math.min(220, Math.max(60, measuredHeight));
   const left = Math.max(12, Math.min(viewportWidth - popoverWidth - 12, rowRect.left));
   const below = rowRect.bottom + 6;
   const above = rowRect.top - popoverHeight - 6;
@@ -470,6 +478,39 @@ function positionLogPopover(documentObj: Document, popover: HTMLElement, row: HT
   popover.style.left = `${left}px`;
   popover.style.top = `${top}px`;
   popover.style.width = `${popoverWidth}px`;
+}
+
+function formatItemLevel(value: number): string {
+  return new Intl.NumberFormat("en-US", { maximumFractionDigits: 2, useGrouping: false }).format(value);
+}
+
+function difficultyChip(difficulty: string): string {
+  const className = difficulty.trim().toLowerCase().replace(/\s+/g, "-");
+  return `<b class="difficulty-chip ${escapeHtml(className)}">${escapeHtml(difficulty)}</b>`;
+}
+
+function gateChip(boss: string): string {
+  const gate = gateForBoss(boss);
+  return gate ? `<b class="gate-chip">${escapeHtml(gate)}</b>` : "";
+}
+
+function gateForBoss(boss: string): string | undefined {
+  const gates: Record<string, string> = {
+    "Witch of Agony, Serca": "G1",
+    "Corvus Tul Rak": "G2",
+    "Brelshaza, Ember in the Ashes": "G1",
+    "Armoche, Sentinel of the Abyss": "G2",
+    Infernas: "G1",
+    "Blossoming Fear, Naitreya": "G2",
+    "Flash of Punishment": "G3",
+    "Abyss Lord Kazeros": "G1",
+    "Death Incarnate Kazeros": "G2"
+  };
+  return gates[boss];
+}
+
+function formatSupportPercentiles(log: LogEntry): string {
+  return [formatPercent(log.contributionPercentile ?? null), formatPercent(log.percentile)].join(" | ");
 }
 
 function displayMetricsForLog(log: LogEntry): CharacterDisplayMetrics {

@@ -1,4 +1,4 @@
-import type { CalibrationConfig, CalibrationTarget } from "../main/calibration.js";
+import type { CalibrationConfig, CalibrationStatus, CalibrationTarget } from "../main/calibration.js";
 import type { CharacterCandidate, CharacterSummary, Rect, Region } from "./types.js";
 
 export type CaptureMode = "foreground-window-display";
@@ -38,13 +38,30 @@ export interface ScanResult extends ReviewLobbyOutput {
   screenshotPath?: string;
 }
 
+export type ScanProgressStage =
+  | "needs-calibration"
+  | "capturing"
+  | "ocr-encounter"
+  | "ocr-characters"
+  | "fetching-logs"
+  | "rendering"
+  | "done"
+  | "error";
+
+export interface ScanProgress {
+  stage: ScanProgressStage;
+  message: string;
+  scanId?: string;
+}
+
 export interface AppApi {
   reviewLobby(input: ReviewLobbyInput): Promise<ReviewLobbyOutput>;
-  startScan(): Promise<ScanResult>;
+  startScan(): Promise<ScanResult | undefined>;
   getLastResult(): Promise<ScanResult | undefined>;
   onScanResultUpdated(callback: (result: ScanResult) => void): () => void;
-  showLastResults(): Promise<boolean>;
+  onScanProgressUpdated(callback: (progress: ScanProgress) => void): () => void;
   dismissOverlay(): Promise<void>;
+  openSettings(): Promise<void>;
   getSettings(): Promise<AppSettings>;
   saveSettings(settings: AppSettings): Promise<AppSettings>;
   openLogs(): Promise<string>;
@@ -53,6 +70,7 @@ export interface AppApi {
   runScreenshotOcr(screenshotPath: string): Promise<CharacterCandidate[]>;
   chooseScreenshot(): Promise<string | undefined>;
   getCalibration(): Promise<CalibrationConfig>;
+  getCalibrationStatus(): Promise<CalibrationStatus>;
   saveCalibration(config: CalibrationConfig): Promise<CalibrationConfig>;
   startCalibration(target: CalibrationTarget): Promise<CalibrationConfig | undefined>;
   completeCalibration(target: CalibrationTarget, rect?: Rect): Promise<void>;

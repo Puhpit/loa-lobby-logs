@@ -57,6 +57,17 @@ describe("candidatesFromOcrText", () => {
 
     expect(candidates.map((candidate) => candidate.normalizedName)).toEqual(["Pepegami"]);
   });
+
+  it("rejects server, difficulty, and encounter UI labels", () => {
+    const candidates = candidatesFromOcrText(
+      "The First\nBalthorr\nThaemine\nVairgrys\nLuterra\nKazeros\nPepegami",
+      80,
+      "applicant-list",
+      rect
+    );
+
+    expect(candidates.map((candidate) => candidate.normalizedName)).toEqual(["Pepegami"]);
+  });
 });
 
 function candidate(normalizedName: string, confidence: number): CharacterCandidate {

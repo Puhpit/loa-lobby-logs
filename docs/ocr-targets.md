@@ -78,7 +78,6 @@ Add a manual calibration fallback that lets the user drag rectangles for:
 ## OCR Output Rules
 
 - Accept high-confidence character names automatically.
-- Show low-confidence names inline for correction.
-- Cache corrections keyed by raw OCR output.
+- Filter known UI labels before log lookup, including difficulty labels, encounter words, and server/world names that can otherwise pass the character-name pattern.
 - Dedupe exact names before log lookup.
 - Treat Lost Ark OCR as English-only for v1.
