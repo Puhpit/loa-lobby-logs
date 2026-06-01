@@ -15,6 +15,12 @@ describe("normalizeOcrName", () => {
   it("rejects empty and punctuation-only text", () => {
     expect(normalizeOcrName("[] ||")).toBe("");
   });
+
+  it("preserves Unicode Latin letters in character names", () => {
+    expect(normalizeOcrName("Lv. 70 Astrèa")).toBe("Astrèa");
+    expect(normalizeOcrName("Brelshaza | Spártácus")).toBe("Spártácus");
+    expect(normalizeOcrName("Ørnblade")).toBe("Ørnblade");
+  });
 });
 
 describe("dedupeCharacterCandidates", () => {

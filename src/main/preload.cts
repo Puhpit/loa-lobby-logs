@@ -22,6 +22,8 @@ const api: AppApi = {
   chooseScreenshot: () => ipcRenderer.invoke("choose-screenshot"),
   getCalibration: () => ipcRenderer.invoke("get-calibration"),
   saveCalibration: (config: CalibrationConfig) => ipcRenderer.invoke("save-calibration", config),
+  startCalibration: (target) => ipcRenderer.invoke("start-calibration", target),
+  completeCalibration: (target, rect) => ipcRenderer.invoke("complete-calibration", target, rect),
   setAlwaysOnTop: (value: boolean) => ipcRenderer.invoke("set-always-on-top", value)
 };
 

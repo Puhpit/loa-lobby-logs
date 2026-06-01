@@ -1,6 +1,6 @@
 import type { CharacterCandidate } from "../shared/types.js";
 
-const LOST_ARK_NAME_PATTERN = /^[A-Za-z][A-Za-z0-9]{3,15}$/;
+const LOST_ARK_NAME_PATTERN = /^\p{L}[\p{L}\p{N}]{3,15}$/u;
 const OCR_STOP_WORDS = new Set([
   "applicant",
   "arty",
@@ -8,14 +8,19 @@ const OCR_STOP_WORDS = new Set([
   "ceos",
   "dbslca",
   "details",
+  "final",
+  "gate",
   "group",
+  "hard",
   "inanna",
   "iting",
   "lobby",
   "luterra",
   "member",
+  "nightmare",
   "nineveh",
   "noma",
+  "normal",
   "oaciting",
   "party",
   "rai",
@@ -48,9 +53,9 @@ export function normalizeOcrNames(rawText: string): string[] {
     .replace(/\s+/g, " ")
     .trim()
     .split(" ")
-    .map((part) => part.replace(/[^A-Za-z0-9]/g, ""))
+    .map((part) => part.replace(/[^\p{L}\p{N}]/gu, ""))
     .filter((part) => LOST_ARK_NAME_PATTERN.test(part))
-    .filter((part) => !OCR_STOP_WORDS.has(part.toLowerCase()));
+    .filter((part) => !OCR_STOP_WORDS.has(part.toLocaleLowerCase()));
 }
 
 export function dedupeCharacterCandidates(candidates: CharacterCandidate[]): CharacterCandidate[] {
@@ -61,7 +66,7 @@ export function dedupeCharacterCandidates(candidates: CharacterCandidate[]): Cha
     if (!normalizedName) continue;
 
     const normalizedCandidate = { ...candidate, normalizedName };
-    const key = normalizedName.toLowerCase();
+    const key = normalizedName.toLocaleLowerCase();
     const existing = bestByName.get(key);
 
     if (!existing || normalizedCandidate.confidence > existing.confidence) {
@@ -74,9 +79,9 @@ export function dedupeCharacterCandidates(candidates: CharacterCandidate[]): Cha
 
 function dropPartialNames(candidates: CharacterCandidate[]): CharacterCandidate[] {
   return candidates.filter((candidate) => {
-    const name = candidate.normalizedName.toLowerCase();
+    const name = candidate.normalizedName.toLocaleLowerCase();
     return !candidates.some((other) => {
-      const otherName = other.normalizedName.toLowerCase();
+      const otherName = other.normalizedName.toLocaleLowerCase();
       return otherName !== name && otherName.startsWith(name) && otherName.length - name.length >= 2;
     });
   });

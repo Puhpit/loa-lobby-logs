@@ -18,4 +18,12 @@ describe("validateSettings", () => {
     expect(validateSettings({ server: "NAW" }).server).toBe("NA");
     expect(validateSettings({ server: "NAE" }).server).toBe("NA");
   });
+
+  it("accepts right overlay placement", () => {
+    expect(validateSettings({ overlayPosition: "right" }).overlayPosition).toBe("right");
+  });
+
+  it("defaults invalid overlay placement to left", () => {
+    expect(validateSettings({ overlayPosition: "bottom" }).overlayPosition).toBe("left");
+  });
 });

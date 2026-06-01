@@ -21,7 +21,7 @@ interface TesseractModule {
   recognize(
     imagePath: string,
     language?: string,
-    options?: { rectangle?: TesseractRect; tessedit_char_whitelist?: string }
+    options?: Record<string, unknown> & { rectangle?: TesseractRect; tessedit_char_whitelist?: string }
   ): Promise<TesseractResult>;
   createWorker?: (language?: string) => Promise<{
     setParameters(params: Record<string, string>): Promise<void>;
@@ -29,6 +29,11 @@ interface TesseractModule {
     terminate(): Promise<void>;
   }>;
 }
+
+const LOST_ARK_NAME_CHARS =
+  "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789" +
+  "ÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏÑÒÓÔÕÖØÙÚÛÜÝŸŒŠŽ" +
+  "àáâãäåæçèéêëìíîïñòóôõöøùúûüýÿœšž ";
 
 export interface ScreenshotCharacterSourceOptions {
   imagePath: string;
@@ -72,12 +77,29 @@ export class ScreenshotCharacterSource implements CharacterSource {
 export async function getEncounterTextFromScreenshot(
   imagePath: string,
   calibration: CalibrationConfig,
-  tesseract?: TesseractModule
+  tesseract?: TesseractModule,
+  logger?: DiagnosticsLogger,
+  scanId?: string
 ): Promise<string> {
   const engine = tesseract ?? (await loadTesseract());
-  const result = await recognizeText(engine, imagePath, calibration.encounterTitle, false);
+  const cropRects = encounterFallbackRects(calibration.encounterTitle);
 
-  return result.data.text.replace(/\s+/g, " ").trim();
+  for (const cropRect of cropRects) {
+    const result = await recognizeText(engine, imagePath, cropRect, false);
+    const rawText = result.data.text.replace(/\s+/g, " ").trim();
+    logger?.info("ocr.encounter.attempt", {
+      scanId,
+      imagePath,
+      cropRect,
+      confidence: result.data.confidence,
+      rawText: result.data.text,
+      normalizedText: rawText
+    });
+
+    if (rawText) return rawText;
+  }
+
+  return "";
 }
 
 export function candidatesFromOcrText(
@@ -114,7 +136,9 @@ async function recognizeText(
     try {
       if (whitelist) {
         await worker.setParameters({
-          tessedit_char_whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 "
+          tessedit_char_whitelist: LOST_ARK_NAME_CHARS,
+          load_system_dawg: "false",
+          load_freq_dawg: "false"
         });
       }
       return await worker.recognize(imagePath, { rectangle });
@@ -125,8 +149,20 @@ async function recognizeText(
 
   return tesseract.recognize(imagePath, "eng", {
     rectangle,
-    ...(whitelist ? { tessedit_char_whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 " } : {})
+    ...(whitelist ? {
+      tessedit_char_whitelist: LOST_ARK_NAME_CHARS,
+      load_system_dawg: "false",
+      load_freq_dawg: "false"
+    } : {})
   });
+}
+
+function encounterFallbackRects(rect: Rect): Rect[] {
+  const offsets = [0, -30, 30];
+  return offsets.map((offset) => ({
+    ...rect,
+    y: Math.max(0, rect.y + offset)
+  }));
 }
 
 function toTesseractRect(rect: Rect): TesseractRect {

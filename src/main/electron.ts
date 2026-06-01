@@ -19,13 +19,14 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
-import { defaultCalibration, loadCalibrationConfig, saveCalibrationConfig } from "./calibration.js";
+import { calibrationTargets, defaultCalibration, loadCalibrationConfig, saveCalibrationConfig } from "./calibration.js";
 import { createDiagnosticsLogger, errorMessage, type DiagnosticsLogger } from "./diagnostics.js";
 import { normalizeHotkey } from "./hotkey.js";
 import { getEncounterTextFromScreenshot, ScreenshotCharacterSource } from "./ocrCharacterSource.js";
 import { reviewLobby } from "./appPipeline.js";
+import { overlayBounds } from "./overlayWindow.js";
 import { defaultSettings, loadSettings, saveSettings } from "./settings.js";
-import type { CalibrationConfig } from "./calibration.js";
+import type { CalibrationConfig, CalibrationTarget } from "./calibration.js";
 import type { AppSettings, ReviewLobbyInput, ScanResult } from "../shared/appTypes.js";
 import type { CharacterCandidate, OcrSourceMode, Rect } from "../shared/types.js";
 
@@ -36,6 +37,12 @@ const settingsPath = (): string => join(app.getPath("userData"), "settings.json"
 
 let settingsWindow: BrowserWindow | undefined;
 let overlayWindow: BrowserWindow | undefined;
+let calibrationWindow: BrowserWindow | undefined;
+let pendingCalibration: {
+  target: CalibrationTarget;
+  display: Display;
+  resolve: (config: CalibrationConfig | undefined) => void;
+} | undefined;
 let tray: Tray | undefined;
 let currentSettings: AppSettings = defaultSettings;
 let lastScanResult: ScanResult | undefined;
@@ -142,6 +149,12 @@ function registerIpc(): void {
     return config;
   });
 
+  ipcMain.handle("start-calibration", async (_event, target: CalibrationTarget) => startCalibration(target));
+
+  ipcMain.handle("complete-calibration", async (_event, target: CalibrationTarget, rect?: Rect) => {
+    await completeCalibration(target, rect);
+  });
+
   ipcMain.handle("run-screenshot-ocr", async (_event, screenshotPath: string) => {
     const calibration = await loadCalibrationConfig(calibrationPath());
     return scanRightSideCandidates(screenshotPath, calibration, "manual-ocr");
@@ -238,10 +251,8 @@ async function showOverlayWindow(result: ScanResult | undefined): Promise<void> 
   if (!result) return;
 
   const primaryDisplay = screen.getPrimaryDisplay();
-  const width = 620;
-  const height = Math.min(760, primaryDisplay.workArea.height);
-  const x = primaryDisplay.workArea.x + primaryDisplay.workArea.width - width;
-  const y = primaryDisplay.workArea.y;
+  const bounds = overlayBounds(primaryDisplay.workArea, currentSettings.overlayPosition);
+  const { width, height, x, y } = bounds;
 
   if (!overlayWindow || overlayWindow.isDestroyed()) {
     logger?.info("overlay.create", { width, height, x, y });
@@ -250,7 +261,7 @@ async function showOverlayWindow(result: ScanResult | undefined): Promise<void> 
       height,
       x,
       y,
-      minWidth: 420,
+      minWidth: 640,
       minHeight: 320,
       title: "LOA Lobby Logs",
       frame: false,
@@ -290,6 +301,113 @@ async function showOverlayWindow(result: ScanResult | undefined): Promise<void> 
     generatedAt: result.generatedAt
   });
   overlayWindow.webContents.send("scan-result-updated", result);
+}
+
+async function startCalibration(target: CalibrationTarget): Promise<CalibrationConfig | undefined> {
+  if (!calibrationTargets.includes(target)) {
+    throw new Error(`Unknown calibration target ${String(target)}`);
+  }
+
+  if (pendingCalibration) {
+    calibrationWindow?.close();
+    pendingCalibration.resolve(undefined);
+    pendingCalibration = undefined;
+  }
+
+  const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+  logger?.info("calibration.start", { target, display: displayDetails(display) });
+
+  return new Promise((resolve) => {
+    pendingCalibration = { target, display, resolve };
+    calibrationWindow = new BrowserWindow({
+      x: display.bounds.x,
+      y: display.bounds.y,
+      width: display.bounds.width,
+      height: display.bounds.height,
+      frame: false,
+      transparent: true,
+      alwaysOnTop: true,
+      skipTaskbar: true,
+      resizable: false,
+      movable: false,
+      fullscreenable: false,
+      backgroundColor: "#00000000",
+      webPreferences: {
+        preload: join(__dirname, "preload.cjs"),
+        contextIsolation: true,
+        nodeIntegration: false
+      }
+    });
+
+    calibrationWindow.setAlwaysOnTop(true, "screen-saver");
+    calibrationWindow.on("closed", () => {
+      calibrationWindow = undefined;
+      if (pendingCalibration?.target === target) {
+        pendingCalibration.resolve(undefined);
+        pendingCalibration = undefined;
+      }
+    });
+
+    void calibrationWindow.loadFile(join(__dirname, "../renderer/index.html"), {
+      query: { view: "calibration", target }
+    }).then(() => {
+      calibrationWindow?.show();
+      calibrationWindow?.focus();
+    });
+  });
+}
+
+async function completeCalibration(target: CalibrationTarget, rect?: Rect): Promise<void> {
+  const pending = pendingCalibration;
+  if (!pending || pending.target !== target) return;
+
+  pendingCalibration = undefined;
+  calibrationWindow?.close();
+  calibrationWindow = undefined;
+
+  if (!rect || rect.width < 4 || rect.height < 4) {
+    logger?.info("calibration.cancel", { target });
+    pending.resolve(undefined);
+    return;
+  }
+
+  const config = await loadCalibrationConfig(calibrationPath()).catch(() => defaultCalibration);
+  const scaledRect = rectForDisplayScale(rect, pending.display);
+  const nextConfig = target === "lobbyRegion"
+    ? {
+        ...config,
+        encounterTitle: scaledRect,
+        applicantList: scaledRect,
+        memberList: scaledRect,
+        selectedLobbyRow: scaledRect
+      }
+    : { ...config, [target]: scaledRect };
+  await saveCalibrationConfig(calibrationPath(), nextConfig);
+  logger?.info("calibration.saved", {
+    target,
+    display: displayDetails(pending.display),
+    clientRect: rect,
+    scaledRect
+  });
+  pending.resolve(nextConfig);
+}
+
+function rectForDisplayScale(rect: Rect, display: Display): Rect {
+  const scale = display.scaleFactor;
+  return {
+    x: Math.max(0, Math.round(rect.x * scale)),
+    y: Math.max(0, Math.round(rect.y * scale)),
+    width: Math.max(1, Math.round(rect.width * scale)),
+    height: Math.max(1, Math.round(rect.height * scale))
+  };
+}
+
+function displayDetails(display: Display): Record<string, unknown> {
+  return {
+    id: display.id,
+    bounds: display.bounds,
+    scaleFactor: display.scaleFactor
+  };
 }
 
 function registerScanHotkey(hotkey: string): void {
@@ -336,7 +454,13 @@ async function runScanInternal(): Promise<ScanResult> {
   const calibration = await loadCalibrationConfig(calibrationPath()).catch(() => defaultCalibration);
   logger?.info("scan.calibration", { scanId, calibration });
   const capture = await captureForegroundLostArkDisplay(warnings);
-  const visibleEncounterText = await getEncounterTextFromScreenshot(capture.screenshotPath, calibration).catch((error) => {
+  const visibleEncounterText = await getEncounterTextFromScreenshot(
+    capture.screenshotPath,
+    calibration,
+    undefined,
+    logger,
+    scanId
+  ).catch((error) => {
     warnings.push(`Encounter OCR failed: ${error instanceof Error ? error.message : String(error)}`);
     logger?.error("ocr.encounter.error", error, { scanId, screenshotPath: capture.screenshotPath });
     return "";

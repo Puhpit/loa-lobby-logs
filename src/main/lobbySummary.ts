@@ -11,6 +11,7 @@ import type {
 export interface EncounterResolution {
   visibleText: string;
   groupName?: string;
+  difficulty?: string;
   bosses: string[];
 }
 
@@ -35,9 +36,10 @@ export async function summarizeLobbyCharacters(options: LobbySummaryOptions): Pr
     characterNames.map(async (name) => {
       try {
         const result = await fetchEncounterAwareLogs(options.logProvider, options.region, name, encounter, options.pages);
-        return summarizeCharacter(name, result.logs, encounter.bosses);
+        const flags: SummaryFlag[] = result.resolvedFromSearch ? ["ocr-search-corrected"] : [];
+        return withFlags(summarizeCharacter(result.name, result.logs, encounter), flags);
       } catch (error) {
-        return withFlags(summarizeCharacter(name, [], encounter.bosses), ["scrape-failed"], error);
+        return withFlags(summarizeCharacter(name, [], encounter), ["scrape-failed"], error);
       }
     })
   );
@@ -64,12 +66,23 @@ async function fetchEncounterAwareLogs(
 
 export function resolveEncounter(visibleText: string): EncounterResolution {
   const groupName = bossGroupForVisibleEncounter(visibleText);
+  const difficulty = parseDifficulty(visibleText);
 
   return {
     visibleText,
     groupName,
+    difficulty,
     bosses: groupName ? lostArkBibleEncounterGroups[groupName] : []
   };
+}
+
+function parseDifficulty(visibleText: string): string | undefined {
+  const value = visibleText.match(/\[\s*(normal|hard|nightmare|the\s+first)\s*\]/i)?.[1];
+  if (!value) return undefined;
+
+  const normalized = value.replace(/\s+/g, " ").trim().toLowerCase();
+  if (normalized === "the first") return "The First";
+  return normalized[0].toUpperCase() + normalized.slice(1);
 }
 
 function uniqueNames(names: string[]): string[] {

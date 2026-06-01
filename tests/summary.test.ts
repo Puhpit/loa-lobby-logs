@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { summarizeCharacter } from "../src/main/summary.js";
+import { displayMetricsForLog, percentileBadge, summarizeCharacter } from "../src/main/summary.js";
 import type { LogEntry } from "../src/shared/types.js";
 
 function log(overrides: Partial<LogEntry>): LogEntry {
@@ -34,26 +34,63 @@ describe("summarizeCharacter", () => {
     expect(summary.bestPercentile).toBe(0.9);
     expect(summary.bestDps).toBe(200);
     expect(summary.medianNdps).toBe(80);
+    expect(summary.selectedLog?.id).toBe("a");
+    expect(summary.displayMetrics?.role).toBe("dps");
+    expect(summary.displayMetrics?.performance[0].value).toBe("200");
     expect(summary.flags).not.toContain("no-encounter-match");
   });
 
-  it("sorts display rows by percentile primary, DPS secondary, and nDPS tertiary", () => {
+  it("selects the latest matching encounter log for display", () => {
     const summary = summarizeCharacter(
       "Pepegami",
       [
-        log({ id: "lower-percentile", percentile: 0.8, dps: 9_999, ndps: 9_999 }),
-        log({ id: "highest-ndps", percentile: 0.9, dps: 5_000, ndps: 4_000 }),
-        log({ id: "highest-dps", percentile: 0.9, dps: 6_000, ndps: 1_000 }),
-        log({ id: "highest-percentile", percentile: 0.95, dps: 1_000, ndps: 1_000 })
+        log({ id: "best-percentile", percentile: 0.95, timestamp: 10 }),
+        log({ id: "latest", percentile: 0.5, timestamp: 30 }),
+        log({ id: "middle", percentile: 0.8, timestamp: 20 })
       ],
       ["Armoche, Sentinel of the Abyss"]
     );
 
-    expect(summary.currentEncounterLogs.map((entry) => entry.id)).toEqual([
-      "highest-percentile",
-      "highest-dps",
-      "highest-ndps",
-      "lower-percentile"
-    ]);
+    expect(summary.currentEncounterLogs.map((entry) => entry.id)).toEqual(["latest", "middle", "best-percentile"]);
+    expect(summary.selectedLog?.id).toBe("latest");
+  });
+
+  it("filters current encounter logs by detected difficulty", () => {
+    const summary = summarizeCharacter(
+      "Pepegami",
+      [
+        log({ id: "hard-latest", difficulty: "Hard", timestamp: 30 }),
+        log({ id: "normal-newer", difficulty: "Normal", timestamp: 50 })
+      ],
+      { bosses: ["Armoche, Sentinel of the Abyss"], difficulty: "Hard" }
+    );
+
+    expect(summary.currentEncounterLogs.map((entry) => entry.id)).toEqual(["hard-latest"]);
+    expect(summary.selectedLog?.id).toBe("hard-latest");
+  });
+
+  it("uses support display metrics for support specs", () => {
+    const metrics = displayMetricsForLog(log({
+      spec: "Desperate Salvation",
+      buffs: [0.95, 0.96, 0.6, 0.37],
+      rContribution: 0.509,
+      contributionPercentile: 0.43,
+      percentile: 0.28
+    }));
+
+    expect(metrics.role).toBe("support");
+    expect(metrics.percentileBadges.map((badge) => badge.label)).toEqual(["43", "28"]);
+    expect(metrics.performance.map((entry) => entry.value)).toEqual(["95", "96", "60", "37"]);
+    expect(metrics.ndps).toEqual({ label: "rDPS", marker: "r", value: "50.9%" });
+  });
+
+  it("matches lostark.bible percentile color thresholds", () => {
+    expect(percentileBadge(1)?.backgroundColor).toBe("#e5cc80");
+    expect(percentileBadge(0.99)?.backgroundColor).toBe("#ee59a5");
+    expect(percentileBadge(0.95)?.backgroundColor).toBe("#ff8000");
+    expect(percentileBadge(0.75)?.backgroundColor).toBe("#a75ed5");
+    expect(percentileBadge(0.5)?.backgroundColor).toBe("#0096ff");
+    expect(percentileBadge(0.25)?.backgroundColor).toBe("#3dd351");
+    expect(percentileBadge(0.24)?.backgroundColor).toBe("#6a6a6a");
   });
 });

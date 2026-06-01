@@ -1,8 +1,8 @@
-import type { CalibrationConfig } from "../main/calibration.js";
-import type { CharacterCandidate, CharacterSummary, Region } from "./types.js";
+import type { CalibrationConfig, CalibrationTarget } from "../main/calibration.js";
+import type { CharacterCandidate, CharacterSummary, Rect, Region } from "./types.js";
 
 export type CaptureMode = "foreground-window-display";
-export type OverlayPosition = "right";
+export type OverlayPosition = "left" | "right";
 
 export interface AppSettings {
   server: Region;
@@ -25,6 +25,7 @@ export interface ReviewLobbyOutput {
   encounter: {
     visibleText: string;
     groupName?: string;
+    difficulty?: string;
     bosses: string[];
   };
   candidates: CharacterCandidate[];
@@ -53,5 +54,7 @@ export interface AppApi {
   chooseScreenshot(): Promise<string | undefined>;
   getCalibration(): Promise<CalibrationConfig>;
   saveCalibration(config: CalibrationConfig): Promise<CalibrationConfig>;
+  startCalibration(target: CalibrationTarget): Promise<CalibrationConfig | undefined>;
+  completeCalibration(target: CalibrationTarget, rect?: Rect): Promise<void>;
   setAlwaysOnTop(value: boolean): Promise<boolean>;
 }

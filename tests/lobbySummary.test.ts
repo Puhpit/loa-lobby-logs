@@ -30,19 +30,51 @@ function result(region: Region, name: string, logs: LogEntry[]): CharacterLogsRe
   };
 }
 
+function searchResult(region: Region, name: string, resolvedFromSearch: string, logs: LogEntry[]): CharacterLogsResult {
+  return {
+    ...result(region, name, logs),
+    resolvedFromSearch
+  };
+}
+
 describe("resolveEncounter", () => {
   it("maps visible Lost Ark encounter labels to lostark.bible boss groups", () => {
-    expect(resolveEncounter("[Hard] Armoche Gate 2")).toEqual({
-      visibleText: "[Hard] Armoche Gate 2",
+    expect(resolveEncounter("[Hard] Fortress of Destruction")).toEqual({
+      visibleText: "[Hard] Fortress of Destruction",
       groupName: "Armoche",
+      difficulty: "Hard",
       bosses: ["Brelshaza, Ember in the Ashes", "Armoche, Sentinel of the Abyss"]
     });
+  });
+
+  it("maps in-game lobby aliases and bracketed difficulty", () => {
+    expect(resolveEncounter("[The First] Final Day")).toEqual({
+      visibleText: "[The First] Final Day",
+      groupName: "Kazeros",
+      difficulty: "The First",
+      bosses: ["Death Incarnate Kazeros", "Archdemon Kazeros", "Abyss Lord Kazeros"]
+    });
+    expect(resolveEncounter("[Hard]Final Day")).toEqual({
+      visibleText: "[Hard]Final Day",
+      groupName: "Kazeros",
+      difficulty: "Hard",
+      bosses: ["Death Incarnate Kazeros", "Archdemon Kazeros", "Abyss Lord Kazeros"]
+    });
+    expect(resolveEncounter("[Nightmare] Sanctum of Frost").groupName).toBe("Serca");
+    expect(resolveEncounter("[Normal] Mount Antares")).toEqual({
+      visibleText: "[Normal] Mount Antares",
+      groupName: "Mordum",
+      difficulty: "Normal",
+      bosses: ["Mordum, the Abyssal Punisher", "Flash of Punishment", "Blossoming Fear, Naitreya", "Infernas"]
+    });
+    expect(resolveEncounter("[Hard] Fortress of Destruction").groupName).toBe("Armoche");
   });
 
   it("leaves unknown encounter text as an unfiltered lookup", () => {
     expect(resolveEncounter("[Normal]Dark Baratron")).toEqual({
       visibleText: "[Normal]Dark Baratron",
       groupName: undefined,
+      difficulty: "Normal",
       bosses: []
     });
   });
@@ -63,7 +95,7 @@ describe("summarizeLobbyCharacters", () => {
 
     const summary = await summarizeLobbyCharacters({
       region: "NA",
-      visibleEncounterText: "[Hard] Armoche",
+      visibleEncounterText: "[Hard] Fortress of Destruction",
       characterNames: [" Badseedrestart ", "badseedrestart", "Pepegami"],
       logProvider: provider
     });
@@ -93,7 +125,7 @@ describe("summarizeLobbyCharacters", () => {
 
     const summary = await summarizeLobbyCharacters({
       region: "NA",
-      visibleEncounterText: "[Hard] Armoche",
+      visibleEncounterText: "[Hard] Fortress of Destruction",
       characterNames: ["Pepegami"],
       logProvider: provider
     });
@@ -113,7 +145,7 @@ describe("summarizeLobbyCharacters", () => {
 
     const summary = await summarizeLobbyCharacters({
       region: "NA",
-      visibleEncounterText: "[Hard] Armoche",
+      visibleEncounterText: "[Hard] Fortress of Destruction",
       characterNames: ["Broken", "Pepegami"],
       logProvider: provider
     });
@@ -122,5 +154,23 @@ describe("summarizeLobbyCharacters", () => {
     expect(summary.characters[0].flags).toEqual(["no-public-logs", "scrape-failed"]);
     expect(summary.characters[0].errorMessage).toBe("request failed");
     expect(summary.characters[1].flags).not.toContain("scrape-failed");
+  });
+
+  it("uses canonical names returned by strict search recovery and flags the correction", async () => {
+    const provider: LogProvider = {
+      async getCharacterLogs(region, name) {
+        return searchResult(region, "Spártácus", name, [log({ id: "accented", name: "Spártácus" })]);
+      }
+    };
+
+    const summary = await summarizeLobbyCharacters({
+      region: "NA",
+      visibleEncounterText: "[Hard] Fortress of Destruction",
+      characterNames: ["Spartacus"],
+      logProvider: provider
+    });
+
+    expect(summary.characters[0].name).toBe("Spártácus");
+    expect(summary.characters[0].flags).toContain("ocr-search-corrected");
   });
 });
