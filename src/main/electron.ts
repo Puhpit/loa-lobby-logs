@@ -14,6 +14,7 @@ import {
   type OpenDialogOptions
 } from "electron";
 import { execFile } from "node:child_process";
+import { existsSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -207,8 +208,17 @@ function createTray(): void {
 }
 
 function createTrayIcon(): Electron.NativeImage {
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32"><rect width="32" height="32" rx="6" fill="#101417"/><path d="M8 21h16v3H8zM10 8h12l-2 11h-8z" fill="#5fd0e7"/></svg>`;
-  return nativeImage.createFromDataURL(`data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`);
+  const iconPath = app.isPackaged
+    ? join(process.resourcesPath, "icon.ico")
+    : join(process.cwd(), "assets", "icon.ico");
+
+  const image = nativeImage.createFromPath(iconPath);
+
+  if (image.isEmpty()) {
+    logger?.warn("tray.icon.empty", { iconPath, exists: existsSync(iconPath) });
+  }
+
+  return image;
 }
 
 async function showSettingsWindow(): Promise<void> {
@@ -224,6 +234,7 @@ async function showSettingsWindow(): Promise<void> {
     minWidth: 560,
     minHeight: 400,
     title: "LOA Lobby Logs Settings",
+    icon: createTrayIcon(),
     show: false,
     backgroundColor: "#0a0a0a",
     webPreferences: {
@@ -265,6 +276,7 @@ async function ensureOverlayWindow(): Promise<BrowserWindow> {
       minWidth: 640,
       minHeight: 320,
       title: "LOA Lobby Logs",
+      icon: createTrayIcon(),
       frame: false,
       alwaysOnTop: true,
       skipTaskbar: true,
