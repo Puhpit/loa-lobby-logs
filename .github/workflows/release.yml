@@ -1,0 +1,48 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Test
+        run: npm test
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Package Windows portable
+        run: npm run package:win
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: LOA-Lobby-Logs-${{ github.ref_name }}-portable
+          path: dist/LOA-Lobby-Logs-*-portable.exe
+          if-no-files-found: error
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $artifact = Get-ChildItem -Path dist -Filter "LOA-Lobby-Logs-*-portable.exe" | Select-Object -First 1
+          gh release create "${{ github.ref_name }}" $artifact.FullName --title "${{ github.ref_name }}" --generate-notes
