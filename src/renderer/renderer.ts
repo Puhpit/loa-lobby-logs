@@ -83,9 +83,9 @@ function initSettings(env: RendererEnvironment, api: AppApi): void {
   void api.getSettings().then((settings) => {
     byId<HTMLSelectElement>(env.document, "server").value = settings.server;
     byId<HTMLInputElement>(env.document, "scanHotkey").value = settings.scanHotkey;
-    byId<HTMLInputElement>(env.document, "captureMode").value = settings.captureMode;
     byId<HTMLSelectElement>(env.document, "overlayPosition").value = settings.overlayPosition;
   });
+  installHotkeyCapture(byId<HTMLInputElement>(env.document, "scanHotkey"));
   void refreshCalibrationStatus(env.document, api);
 
   byId<HTMLButtonElement>(env.document, "saveSettings").addEventListener("click", async () => {
@@ -96,7 +96,7 @@ function initSettings(env: RendererEnvironment, api: AppApi): void {
       captureMode: "foreground-window-display",
       overlayPosition: byId<HTMLSelectElement>(env.document, "overlayPosition").value as OverlayPosition
     });
-    settingsMessageEl.textContent = `Saved ${settings.server} / ${settings.scanHotkey}`;
+    settingsMessageEl.textContent = `Saved ${settings.server} / ${settings.scanHotkey} / Overlay ${settings.overlayPosition}`;
   });
 
   scanButton.addEventListener("click", async () => {
@@ -270,11 +270,16 @@ function renderRows(
       `;
 
       row.querySelector(".name")!.textContent = summary.name;
-      row.querySelector(".meta")!.textContent = [summary.className, summary.spec, summary.gearScore ? `ilvl ${formatItemLevel(summary.gearScore)}` : ""]
+      row.querySelector(".meta")!.textContent = [
+        summary.className,
+        summary.spec,
+        typeof summary.gearScore === "number" ? `ilvl ${formatItemLevel(summary.gearScore)}` : "",
+        typeof summary.combatPower === "number" ? `CP ${formatCombatPower(summary.combatPower)}` : ""
+      ]
         .filter(Boolean)
         .join(" | ");
       row.querySelector(".encounter-tag")!.textContent = summary.selectedLog
-        ? [summary.selectedLog.difficulty, summary.selectedLog.boss].filter(Boolean).join(" | ")
+        ? [summary.selectedLog.difficulty, gateForBoss(summary.selectedLog.boss), summary.selectedLog.boss].filter(Boolean).join(" | ")
         : "";
       row.querySelector(".lookup-message")!.textContent = friendlyLookupMessage(summary, encounter);
       row.addEventListener("pointerenter", () => showLogPopover(documentObj, row, summary));
@@ -359,8 +364,9 @@ async function refreshCalibrationStatus(documentObj: Document, api: AppApi): Pro
   const statusEl = byId(documentObj, "calibrationStatus");
   try {
     const status = await api.getCalibrationStatus();
-    statusEl.textContent = formatCalibrationStatus(status);
+    statusEl.replaceChildren(...calibrationStatusElements(documentObj, status));
   } catch (error) {
+    statusEl.replaceChildren();
     statusEl.textContent = errorMessage(error);
   }
 }
@@ -390,11 +396,31 @@ function setSelection(selection: HTMLElement, x: number, y: number, width: numbe
   selection.style.height = `${height}px`;
 }
 
-function formatCalibrationStatus(status: Awaited<ReturnType<AppApi["getCalibrationStatus"]>>): string {
+function calibrationStatusElements(
+  documentObj: Document,
+  status: Awaited<ReturnType<AppApi["getCalibrationStatus"]>>
+): HTMLElement[] {
   return [
-    `Encounter Title: ${status.zones.encounterTitle ? "Set" : "Unset"}`,
-    `Character List: ${status.zones.characterList ? "Set" : "Unset"}`
-  ].join("\n");
+    calibrationStatusItem(documentObj, "Encounter Title", status.config.encounterTitle ? formatRect(status.config.encounterTitle) : "Unset"),
+    calibrationStatusItem(documentObj, "Character List", status.config.characterList ? formatRect(status.config.characterList) : "Unset")
+  ];
+}
+
+function calibrationStatusItem(documentObj: Document, label: string, value: string): HTMLElement {
+  const item = documentObj.createElement("span");
+  item.className = "calibration-status-item";
+  const labelEl = documentObj.createElement("span");
+  labelEl.className = "calibration-status-label";
+  labelEl.textContent = label;
+  const valueEl = documentObj.createElement("span");
+  valueEl.className = "calibration-status-value";
+  valueEl.textContent = value;
+  item.replaceChildren(labelEl, valueEl);
+  return item;
+}
+
+function formatRect(rect: { x: number; y: number; width: number; height: number }): string {
+  return `${rect.x}, ${rect.y}, ${rect.width} x ${rect.height}`;
 }
 
 function percentileMetric(summary: ScanResult["summaries"][number]): string {
@@ -492,6 +518,60 @@ function formatItemLevel(value: number): string {
   return new Intl.NumberFormat("en-US", { maximumFractionDigits: 2, useGrouping: false }).format(value);
 }
 
+function formatCombatPower(value: number): string {
+  return new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value);
+}
+
+function installHotkeyCapture(input: HTMLInputElement): void {
+  let listening = false;
+  let previousValue = input.value;
+  input.readOnly = true;
+  input.title = "Click, then press a hotkey";
+
+  const startListening = () => {
+    if (listening) return;
+    listening = true;
+    previousValue = input.value;
+    input.value = "Press hotkey...";
+  };
+
+  input.addEventListener("focus", startListening);
+  input.addEventListener("click", startListening);
+  input.addEventListener("keydown", (event) => {
+    if (!listening) return;
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (event.key === "Escape") {
+      input.value = previousValue;
+      listening = false;
+      input.blur();
+      return;
+    }
+
+    const key = captureKeyName(event.key);
+    if (!key) return;
+    const modifiers = [
+      event.ctrlKey ? "Ctrl" : "",
+      event.altKey ? "Alt" : "",
+      event.shiftKey ? "Shift" : "",
+      event.metaKey ? "Command" : ""
+    ].filter(Boolean);
+    input.value = [...modifiers, key].join("+");
+    listening = false;
+    input.blur();
+  });
+}
+
+function captureKeyName(key: string): string | undefined {
+  if (["Control", "Shift", "Alt", "Meta"].includes(key)) return undefined;
+  if (key === " ") return "Space";
+  if (key === "+") return "Plus";
+  if (/^Arrow/.test(key)) return key.replace(/^Arrow/, "");
+  if (key.length === 1) return key.toUpperCase();
+  return key;
+}
+
 function difficultyChip(difficulty: string): string {
   const className = difficulty.trim().toLowerCase().replace(/\s+/g, "-");
   return `<b class="difficulty-chip ${escapeHtml(className)}">${escapeHtml(difficulty)}</b>`;
@@ -587,14 +667,18 @@ function percentileTextColor(value: number): string {
 
 function friendlyLookupMessage(summary: ScanResult["summaries"][number], encounter: ScanResult["encounter"]): string {
   if (summary.flags.includes("no-encounter-match") && summary.selectedLog) {
-    return `No matching ${formatEncounterContext(encounter)} logs; showing latest public log`;
+    return "No matching encounter logs; showing latest public log";
   }
   if (summary.selectedLog) return "";
   if (
-    summary.flags.includes("no-public-logs") ||
     summary.flags.includes("character-not-found") ||
-    summary.errorMessage?.toLowerCase().includes("does not have public") ||
     summary.errorMessage?.toLowerCase().includes("not found")
+  ) {
+    return `Character ${summary.name} was not found`;
+  }
+  if (
+    (summary.flags.includes("no-public-logs") && !summary.flags.includes("scrape-failed")) ||
+    summary.errorMessage?.toLowerCase().includes("does not have public")
   ) {
     return `Character ${summary.name} does not have public logs`;
   }
@@ -602,10 +686,6 @@ function friendlyLookupMessage(summary: ScanResult["summaries"][number], encount
     return `Could not load logs for ${summary.name}`;
   }
   return "";
-}
-
-function formatEncounterContext(encounter: ScanResult["encounter"]): string {
-  return [encounter.difficulty, encounter.groupName ?? encounter.visibleText].filter(Boolean).join(" ") || "encounter";
 }
 
 function formatNumber(value: number | null | undefined): string {

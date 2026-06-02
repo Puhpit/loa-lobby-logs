@@ -15,4 +15,26 @@ describe("normalizeHotkey", () => {
       accelerator: "Control+Alt+D"
     });
   });
+
+  it("accepts bare keys", () => {
+    expect(normalizeHotkey("f8")).toEqual({
+      userFacing: "F8",
+      accelerator: "F8"
+    });
+  });
+
+  it("normalizes captured special key names", () => {
+    expect(normalizeHotkey("Ctrl+ArrowUp")).toEqual({
+      userFacing: "Ctrl+Up",
+      accelerator: "Control+Up"
+    });
+    expect(normalizeHotkey("Alt+Space")).toEqual({
+      userFacing: "Alt+Space",
+      accelerator: "Alt+Space"
+    });
+    expect(normalizeHotkey("Ctrl+Plus")).toEqual({
+      userFacing: "Ctrl+Plus",
+      accelerator: "Control+Plus"
+    });
+  });
 });

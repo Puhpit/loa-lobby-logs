@@ -1,4 +1,4 @@
-import type { CharacterDisplayMetrics, CharacterSummary, LogEntry, PercentileBadge } from "../shared/types.js";
+import type { CharacterDisplayMetrics, CharacterHeader, CharacterSummary, LogEntry, PercentileBadge } from "../shared/types.js";
 
 export interface SummaryEncounterContext {
   bosses: string[];
@@ -10,7 +10,8 @@ const SUPPORT_PERFORMANCE_COLORS = ["#fca5a5", "#86efac", "#fde047", "#93c5fd"];
 export function summarizeCharacter(
   name: string,
   logs: LogEntry[],
-  encounter: string[] | SummaryEncounterContext
+  encounter: string[] | SummaryEncounterContext,
+  header?: CharacterHeader
 ): CharacterSummary {
   const context = Array.isArray(encounter) ? { bosses: encounter } : encounter;
   const currentEncounterLogs = [...logs.filter((log) => matchesEncounter(log, context))]
@@ -30,9 +31,10 @@ export function summarizeCharacter(
 
   return {
     name,
-    className: latest?.className,
+    className: latest?.className ?? header?.className,
     spec: latest?.spec,
-    gearScore: latest?.gearScore,
+    gearScore: latest?.gearScore ?? header?.itemLevel,
+    combatPower: selectedLog?.combatPower ?? latest?.combatPower,
     selectedLog,
     recentEncounterLogs,
     displayMetrics: selectedLog ? displayMetricsForLog(selectedLog) : undefined,

@@ -88,6 +88,17 @@ describe("loadCalibrationStatus", () => {
         config: emptyCalibration,
         zones: { encounterTitle: false, characterList: false }
       });
+
+      const invalidPath = join(dir, "invalid-calibration.json");
+      await writeFile(invalidPath, JSON.stringify({
+        version: 1,
+        encounterTitle: { x: 0, y: 0, width: 0, height: 10 }
+      }), "utf8");
+      await expect(loadCalibrationStatus(invalidPath)).resolves.toEqual({
+        configured: false,
+        config: emptyCalibration,
+        zones: { encounterTitle: false, characterList: false }
+      });
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

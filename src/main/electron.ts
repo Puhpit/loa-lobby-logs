@@ -251,10 +251,24 @@ async function showSettingsWindow(): Promise<void> {
     if (!isQuitting) {
       event.preventDefault();
       settingsWindow?.hide();
+      if (!isQuitting) registerScanHotkey(currentSettings.scanHotkey);
     }
+  });
+  settingsWindow.on("focus", () => {
+    logger?.info("settings.focus.hotkeySuspend");
+    globalShortcut.unregisterAll();
+  });
+  settingsWindow.on("blur", () => {
+    logger?.info("settings.blur.hotkeyResume");
+    if (!isQuitting) registerScanHotkey(currentSettings.scanHotkey);
+  });
+  settingsWindow.on("hide", () => {
+    logger?.info("settings.hide.hotkeyResume");
+    if (!isQuitting) registerScanHotkey(currentSettings.scanHotkey);
   });
   settingsWindow.on("closed", () => {
     settingsWindow = undefined;
+    if (!isQuitting) registerScanHotkey(currentSettings.scanHotkey);
   });
 
   await settingsWindow.loadFile(join(__dirname, "../renderer/index.html"), { query: { view: "settings" } });
@@ -433,6 +447,14 @@ function displayDetails(display: Display): Record<string, unknown> {
 function registerScanHotkey(hotkey: string): void {
   globalShortcut.unregisterAll();
   const normalized = normalizeHotkey(hotkey);
+  if (settingsWindow?.isFocused()) {
+    logger?.info("hotkey.suspended", {
+      hotkey: normalized.userFacing,
+      accelerator: normalized.accelerator,
+      reason: "settings-focused"
+    });
+    return;
+  }
   const ok = globalShortcut.register(normalized.accelerator, () => {
     logger?.info("hotkey.triggered", { hotkey: normalized.userFacing, accelerator: normalized.accelerator });
     void runScan();

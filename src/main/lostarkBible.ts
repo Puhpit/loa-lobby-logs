@@ -126,7 +126,15 @@ export class LostArkBibleProvider {
     }
 
     if (!pageData.logsEnabled) {
-      throw new LostArkBibleError("private_logs", `Character ${name} does not have public lostark.bible logs`);
+      return {
+        region,
+        name,
+        resolvedFromSearch,
+        header,
+        logsEnabled: false,
+        isPublic: Boolean(pageData.isPublic),
+        logs: []
+      };
     }
 
     const logs = bosses.length > 0 ? [] : [...firstPageLogs];
