@@ -93,6 +93,7 @@ export interface CharacterSummary {
   className?: string;
   spec?: string;
   gearScore?: number;
+  combatPower?: number;
   selectedLog?: LogEntry;
   recentEncounterLogs: LogEntry[];
   displayMetrics?: CharacterDisplayMetrics;

@@ -8,11 +8,15 @@ It captures the visible Lost Ark lobby/applicant UI, extracts character names wi
 
 1. Install dependencies with `npm install`.
 2. Start the app with `npm start`, or run the packaged portable executable.
-3. Open settings from the tray icon.
-4. Use the two calibration buttons in settings to drag separate boxes over the live Lost Ark display for the encounter title and visible character rows. The app blocks scans until both regions are saved.
-5. With Lost Ark focused, press `Ctrl+Alt+D` to scan the visible lobby/applicant area.
-6. Review the overlay. It opens immediately with scan progress, then updates with results when OCR and public log lookups finish. It defaults to the left side and can be moved to the right side from settings. Use the overlay close button to dismiss it.
-7. Use the settings footer to save settings or open app diagnostics logs.
+3. Configure the app from the tray icon. Settings is where you choose the region, capture the scan hotkey, choose left/right overlay placement, calibrate OCR zones, save settings, and open diagnostics logs.
+4. Set both OCR zones before scanning:
+   - Encounter Title: drag a box around the lobby encounter title text, such as the bracketed difficulty and raid name.
+   - Character List: drag a box around the visible lobby/applicant/member character rows.
+   The app blocks scans until both zones are saved. Settings shows the saved coordinates for each zone.
+5. Configure the scan hotkey by clicking the hotkey field, pressing the desired key combination, then pressing Save Settings. The hotkey is not persisted until settings are saved. The current default is `Ctrl+Alt+D`.
+6. With Lost Ark focused and the configured lobby visible, press the scan hotkey or use Scan Now from the tray/settings window.
+7. Review the overlay. It opens immediately with scan progress, then updates with current-scan results when OCR and public lostark.bible lookups finish. Rows show class/spec, ilvl, combat power, the selected encounter gate, role-aware percentiles, performance, and nDPS/uDPS or support rDPS data. If a character exists but has no public logs, the row still shows known character metadata with a no-public-logs message.
+8. Dismiss the overlay with its close button. Full scan results are not persisted after the overlay is cleared, but lostark.bible responses remain cached under Electron `userData`.
 
 ## Architecture
 
@@ -33,6 +37,6 @@ Preload and renderer:
 Data flow:
 
 - The scan hotkey opens the overlay first. If calibration is missing, the overlay shows a setup warning and blocks the scan.
-- OCR reads the calibrated encounter title region into encounter text and the calibrated character list region into character candidates. Calibration rectangles are saved in screenshot pixel coordinates after the user drags each live screen region.
+- OCR reads the calibrated Encounter Title zone into encounter text and the calibrated Character List zone into character candidates. Calibration rectangles are saved in screenshot pixel coordinates after the user drags each live screen region.
 - The pipeline deduplicates candidates, resolves visible encounter text, fetches public lostark.bible logs, and builds overlay-ready summaries.
 - The overlay renders live scan progress and rows from the current scan event only. Full scan results are not persisted; closing the overlay clears the visible renderer state while the lostark.bible response cache remains available for later scans.

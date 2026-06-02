@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { resolveEncounter, summarizeLobbyCharacters } from "../src/main/lobbySummary.js";
-import type { CharacterLogsResult, LogEntry, LogProvider, Region } from "../src/shared/types.js";
+import type { CharacterHeader, CharacterLogsResult, LogEntry, LogProvider, Region } from "../src/shared/types.js";
 
 function log(overrides: Partial<LogEntry>): LogEntry {
   return {
@@ -34,6 +34,18 @@ function searchResult(region: Region, name: string, resolvedFromSearch: string, 
   return {
     ...result(region, name, logs),
     resolvedFromSearch
+  };
+}
+
+function header(overrides: Partial<CharacterHeader> = {}): CharacterHeader {
+  return {
+    id: 1,
+    serial: "serial",
+    rosterId: 2,
+    classKey: "elemental_master",
+    className: "Sorceress",
+    itemLevel: 1765,
+    ...overrides
   };
 }
 
@@ -174,6 +186,53 @@ describe("summarizeLobbyCharacters", () => {
     expect(summary.characters[0].flags).toEqual(["no-public-logs", "scrape-failed"]);
     expect(summary.characters[0].errorMessage).toBe("request failed");
     expect(summary.characters[1].flags).not.toContain("scrape-failed");
+  });
+
+  it("keeps found character metadata when logs are not public", async () => {
+    const provider: LogProvider = {
+      async getCharacterLogs(region, name) {
+        return {
+          region,
+          name,
+          header: header({ className: "Bard", itemLevel: 1700.5 }),
+          logsEnabled: false,
+          isPublic: true,
+          logs: []
+        };
+      }
+    };
+
+    const summary = await summarizeLobbyCharacters({
+      region: "NA",
+      visibleEncounterText: "[Hard] Fortress of Destruction",
+      characterNames: ["Privatebard"],
+      logProvider: provider
+    });
+
+    expect(summary.characters[0]).toMatchObject({
+      name: "Privatebard",
+      className: "Bard",
+      gearScore: 1700.5,
+      flags: ["no-public-logs"]
+    });
+  });
+
+  it("marks actually missing characters as not found", async () => {
+    const provider: LogProvider = {
+      async getCharacterLogs() {
+        throw Object.assign(new Error("Character Missing was not found on lostark.bible"), { code: "not_found" });
+      }
+    };
+
+    const summary = await summarizeLobbyCharacters({
+      region: "NA",
+      visibleEncounterText: "[Hard] Fortress of Destruction",
+      characterNames: ["Missing"],
+      logProvider: provider
+    });
+
+    expect(summary.characters[0].flags).toEqual(["no-public-logs", "character-not-found"]);
+    expect(summary.characters[0].errorMessage).toContain("not found");
   });
 
   it("uses canonical names returned by strict search recovery and flags the correction", async () => {

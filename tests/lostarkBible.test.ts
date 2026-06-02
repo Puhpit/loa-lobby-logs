@@ -153,14 +153,20 @@ describe("LostArkBibleProvider page extraction", () => {
     ]);
   });
 
-  it("throws concrete errors for private or missing characters", async () => {
+  it("returns header-only results for private logs and throws for missing characters", async () => {
     const privateProvider = new LostArkBibleProvider((async () =>
       new Response(minimalPage({ logsEnabled: false }), { status: 200 })) as typeof fetch);
     const missingProvider = new LostArkBibleProvider((async () =>
       new Response("no character here", { status: 200 })) as typeof fetch);
 
-    await expect(privateProvider.getCharacterLogs("NA", "Astery")).rejects.toMatchObject({
-      code: "private_logs"
+    await expect(privateProvider.getCharacterLogs("NA", "Astery")).resolves.toMatchObject({
+      name: "Astery",
+      logsEnabled: false,
+      header: {
+        className: "Sorceress",
+        itemLevel: 1765
+      },
+      logs: []
     });
     await expect(missingProvider.getCharacterLogs("NA", "DefinitelyMissing")).rejects.toMatchObject({
       code: "not_found"

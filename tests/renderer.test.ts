@@ -22,7 +22,9 @@ class FakeElement {
   value = "";
   checked = false;
   disabled = false;
+  readOnly = false;
   tabIndex = -1;
+  title = "";
   clientWidth = 720;
   clientHeight = 760;
   scrollHeight = 120;
@@ -51,14 +53,23 @@ class FakeElement {
     this.listeners.set(event, [...(this.listeners.get(event) ?? []), listener]);
   }
 
-  async trigger(event: string): Promise<void> {
-    await Promise.all((this.listeners.get(event) ?? []).map((listener) => listener({ type: event })));
+  async trigger(event: string, data: Record<string, unknown> = {}): Promise<void> {
+    const eventData = {
+      type: event,
+      preventDefault: () => undefined,
+      stopPropagation: () => undefined,
+      ...data
+    };
+    await Promise.all((this.listeners.get(event) ?? []).map((listener) => listener(eventData)));
   }
+
+  blur(): void {}
 
   replaceChildren(...children: FakeElement[]): void {
     this.children.length = 0;
     this.children.push(...children);
     this.html = "";
+    this.textContent = children.map((child) => child.textContent).join("");
   }
 
   querySelector(selector: string): FakeElement | undefined {
@@ -148,7 +159,6 @@ const settingsIds = [
   "settingsMessage",
   "server",
   "scanHotkey",
-  "captureMode",
   "overlayPosition",
   "saveSettings",
   "openLogs",
@@ -191,7 +201,7 @@ describe("renderer boot", () => {
     expect(document.getElementById("overlayResults")!.children).toHaveLength(1);
     const row = document.getElementById("overlayResults")!.children[0];
     expect(row.querySelector(".name")?.textContent).toBe("Pepegami");
-    expect(row.querySelector(".meta")?.textContent).toContain("ilvl 1765.33");
+    expect(row.querySelector(".meta")?.textContent).toContain("ilvl 1765.33 | CP 5,216.71");
     expect(row.innerHTML).toContain("nDPS/uDPS");
     expect(row.innerHTML).toContain("color:#FF69B4");
     expect(row.innerHTML).toContain(">99</b>");
@@ -292,7 +302,7 @@ describe("renderer boot", () => {
     expect(html).not.toContain("percentile-badge");
   });
 
-  it("renders friendly failed lookup messages without raw flags", async () => {
+  it("renders friendly scrape failure messages without raw flags", async () => {
     const document = new FakeDocument(overlayIds);
     const window = new FakeWindow({ href: "app://index.html?view=overlay", search: "?view=overlay" });
     const api = createApi();
@@ -304,7 +314,7 @@ describe("renderer boot", () => {
     api.emitScanResult(scanResult({ selectedLog: false, flags: ["no-public-logs", "scrape-failed"] }));
     const row = document.getElementById("overlayResults")!.children[0];
 
-    expect(row.querySelector(".lookup-message")?.textContent).toBe("Character Pepegami does not have public logs");
+    expect(row.querySelector(".lookup-message")?.textContent).toBe("Could not load logs for Pepegami");
     expect(row.innerHTML).not.toContain("no-public-logs");
     expect(row.innerHTML).not.toContain("scrape-failed");
   });
@@ -331,8 +341,8 @@ describe("renderer boot", () => {
     }));
     const row = document.getElementById("overlayResults")!.children[0];
 
-    expect(row.querySelector(".encounter-tag")?.textContent).toBe("Hard | Corvus Tul Rak");
-    expect(row.querySelector(".lookup-message")?.textContent).toBe("No matching Hard Kazeros logs; showing latest public log");
+    expect(row.querySelector(".encounter-tag")?.textContent).toBe("Hard | G2 | Corvus Tul Rak");
+    expect(row.querySelector(".lookup-message")?.textContent).toBe("No matching encounter logs; showing latest public log");
   });
 
   it("wires settings buttons to their expected APIs", async () => {
@@ -353,9 +363,94 @@ describe("renderer boot", () => {
     expect(api.saveSettingsCalls).toBe(1);
     expect(api.savedSettings?.overlayPosition).toBe("right");
     expect(api.startScanCalls).toBe(1);
-    expect(document.getElementById("calibrationStatus")!.textContent).toBe("Encounter Title: Set\nCharacter List: Unset");
+    expect(api.savedSettings?.captureMode).toBe("foreground-window-display");
+    expect(document.getElementById("settingsMessage")!.textContent).toBe("Saved NA / Ctrl+Alt+D / Overlay right");
+    const calibrationStatus = document.getElementById("calibrationStatus")!;
+    expect(calibrationStatus.children).toHaveLength(2);
+    expect(calibrationStatus.children[0].children[0].textContent).toBe("Encounter Title");
+    expect(calibrationStatus.children[0].children[1].textContent).toBe("10, 20, 30 x 40");
+    expect(calibrationStatus.children[1].children[0].textContent).toBe("Character List");
+    expect(calibrationStatus.children[1].children[1].textContent).toBe("Unset");
     expect(api.events).toContainEqual({ event: "button.click", data: { action: "settings.save" } });
     expect(api.events).toContainEqual({ event: "button.click", data: { action: "settings.scanNow" } });
+  });
+
+  it("captures hotkeys in settings and supports cancelling with Escape", async () => {
+    const document = new FakeDocument(settingsIds);
+    const window = new FakeWindow({ href: "app://index.html?view=settings", search: "?view=settings" });
+    const api = createApi();
+    window.loaLobbyLogs = api;
+
+    bootRenderer({ window: window as unknown as Window, document: document as unknown as Document });
+    await flushPromises();
+
+    const hotkey = document.getElementById("scanHotkey")!;
+    expect(hotkey.readOnly).toBe(true);
+
+    await hotkey.trigger("focus");
+    expect(hotkey.value).toBe("Press hotkey...");
+    await hotkey.trigger("keydown", { key: "F8", ctrlKey: false, altKey: false, shiftKey: false, metaKey: false });
+    expect(hotkey.value).toBe("F8");
+    expect(api.saveSettingsCalls).toBe(0);
+
+    await hotkey.trigger("focus");
+    await hotkey.trigger("keydown", { key: "d", ctrlKey: true, altKey: true, shiftKey: false, metaKey: false });
+    expect(hotkey.value).toBe("Ctrl+Alt+D");
+
+    await hotkey.trigger("focus");
+    await hotkey.trigger("keydown", { key: "Shift", ctrlKey: false, altKey: false, shiftKey: true, metaKey: false });
+    expect(hotkey.value).toBe("Press hotkey...");
+    await hotkey.trigger("keydown", { key: "Escape", ctrlKey: false, altKey: false, shiftKey: false, metaKey: false });
+    expect(hotkey.value).toBe("Ctrl+Alt+D");
+
+    await document.getElementById("saveSettings")!.trigger("click");
+    expect(api.saveSettingsCalls).toBe(1);
+    expect(api.savedSettings?.scanHotkey).toBe("Ctrl+Alt+D");
+  });
+
+  it("distinguishes private logs, missing characters, and scrape failures", async () => {
+    const document = new FakeDocument(overlayIds);
+    const window = new FakeWindow({ href: "app://index.html?view=overlay", search: "?view=overlay" });
+    const api = createApi();
+    window.loaLobbyLogs = api;
+
+    bootRenderer({ window: window as unknown as Window, document: document as unknown as Document });
+    await flushPromises();
+
+    api.emitScanResult(scanResult({ selectedLog: false, flags: ["no-public-logs"] }));
+    let row = document.getElementById("overlayResults")!.children[0];
+    expect(row.querySelector(".meta")?.textContent).toContain("ilvl 1765.33 | CP 5,216.71");
+    expect(row.querySelector(".lookup-message")?.textContent).toBe("Character Pepegami does not have public logs");
+
+    api.emitScanResult(scanResult({ selectedLog: false, flags: ["character-not-found"] }));
+    row = document.getElementById("overlayResults")!.children[0];
+    expect(row.querySelector(".lookup-message")?.textContent).toBe("Character Pepegami was not found");
+
+    api.emitScanResult(scanResult({ selectedLog: false, flags: ["no-public-logs", "scrape-failed"] }));
+    row = document.getElementById("overlayResults")!.children[0];
+    expect(row.querySelector(".lookup-message")?.textContent).toBe("Could not load logs for Pepegami");
+  });
+
+  it("renders missing calibration as unset coordinates", async () => {
+    const document = new FakeDocument(settingsIds);
+    const window = new FakeWindow({ href: "app://index.html?view=settings", search: "?view=settings" });
+    const api = createApi({
+      calibrationStatus: {
+        configured: false,
+        config: { version: 1 },
+        zones: { encounterTitle: false, characterList: false }
+      }
+    });
+    window.loaLobbyLogs = api;
+
+    bootRenderer({ window: window as unknown as Window, document: document as unknown as Document });
+    await flushPromises();
+
+    const calibrationStatus = document.getElementById("calibrationStatus")!;
+    expect(calibrationStatus.children[0].children[0].textContent).toBe("Encounter Title");
+    expect(calibrationStatus.children[0].children[1].textContent).toBe("Unset");
+    expect(calibrationStatus.children[1].children[0].textContent).toBe("Character List");
+    expect(calibrationStatus.children[1].children[1].textContent).toBe("Unset");
   });
 
   it("renders scan progress and opens settings from calibration warning", async () => {
@@ -381,7 +476,9 @@ describe("renderer boot", () => {
   });
 });
 
-function createApi(): AppApi & {
+function createApi(options: {
+  calibrationStatus?: Awaited<ReturnType<AppApi["getCalibrationStatus"]>>;
+} = {}): AppApi & {
   readonly events: Array<{ event: string; data?: Record<string, unknown> }>;
   dismissOverlayCalls: number;
   saveSettingsCalls: number;
@@ -465,10 +562,10 @@ function createApi(): AppApi & {
       configured: false,
       config: {
         version: 1,
-        encounterTitle: { x: 0, y: 0, width: 1, height: 1 }
+        encounterTitle: { x: 10, y: 20, width: 30, height: 40 }
       },
       zones: { encounterTitle: true, characterList: false }
-    }),
+    } satisfies Awaited<ReturnType<AppApi["getCalibrationStatus"]>>),
     saveCalibration: async (config) => config,
     startCalibration: async () => undefined,
     completeCalibration: async () => undefined,
@@ -480,6 +577,10 @@ function createApi(): AppApi & {
       for (const listener of progressListeners) listener(progress);
     }
   };
+
+  if (options.calibrationStatus) {
+    api.getCalibrationStatus = async () => options.calibrationStatus!;
+  }
 
   return api;
 }
@@ -508,6 +609,7 @@ function scanResult(options: {
     className: "Sorceress",
     spec: role === "support" ? "Full Bloom" : "Igniter",
     gearScore: 1765.329950546875,
+    combatPower: 5216.7099609375,
     percentile: options.percentile ?? 0.99,
     contributionPercentile: options.contributionPercentile,
     duration: 480,
@@ -530,6 +632,7 @@ function scanResult(options: {
       className: "Sorceress",
       spec: "Igniter",
       gearScore: 1765.329950546875,
+      combatPower: 5216.7099609375,
       selectedLog: options.selectedLog === false ? undefined : selectedLog,
       recentEncounterLogs: options.selectedLog === false ? [] : [selectedLog],
       displayMetrics: {

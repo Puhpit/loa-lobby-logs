@@ -4,7 +4,7 @@
 
 LOA Lobby Logs is a personal Windows Electron/TypeScript overlay for Lost Ark lobby and applicant screening.
 
-The app reads visible lobby/applicant names from screenshots, fetches public lostark.bible character logs, prioritizes the current encounter, and displays compact ranking data such as percentile, DPS, and nDPS.
+The app reads visible lobby/applicant names from screenshots, fetches public lostark.bible character logs, prioritizes the current encounter, and displays compact ranking data such as percentile, DPS, nDPS, and support rDPS.
 
 Current stack:
 
@@ -21,6 +21,18 @@ Current runtime architecture:
 - `src/main/preload.cts` builds to CommonJS `dist/src/main/preload.cjs`; Electron windows must load this `.cjs` preload so `window.loaLobbyLogs` is exposed.
 - `src/renderer/renderer.ts` is one renderer bundle with `?view=settings` and `?view=overlay` modes. It guards missing preload with a visible fatal message and logs renderer boot/click/render events.
 - `src/main/appPipeline.ts` combines OCR/manual candidates, encounter text, lostark.bible fetching, cache, rate limiting, and summaries.
+
+Expected user flow:
+
+1. Launch the portable app or `npm start`; the app runs from the tray.
+2. Open Settings from the tray.
+3. Choose the lostark.bible region, capture a scan hotkey, choose left/right overlay placement, and save settings.
+4. Calibrate both OCR zones before scanning:
+   - Encounter Title: the lobby encounter title/difficulty text.
+   - Character List: the visible lobby/applicant/member character rows.
+5. With Lost Ark focused, press the saved hotkey or use Scan Now. The overlay opens with progress, then shows the current scan results.
+
+Do not expose non-configurable settings in the UI. `captureMode` is currently fixed internally as `foreground-window-display`.
 
 ## Primary Development Environment
 
@@ -99,7 +111,7 @@ Default validation order for most code changes:
 
 Use npm start for Electron runtime checks when local GUI validation is relevant.
 
-Use `npm run package:win` only when packaging behavior or Windows distributable output is affected. Do not commit generated `dist/`, unpacked executables, `.tools/`, logs, screenshots, caches, or HAR files.
+Use `npm run package:win` when packaging behavior or Windows distributable output is affected, or when the user asks to test a local portable executable. Do not commit generated `dist/`, unpacked executables, `.tools/`, logs, screenshots, caches, or HAR files.
 
 When rebuilding the Windows portable executable locally, first check whether the existing portable app is running and locking `dist/LOA-Lobby-Logs-0.1.0-portable.exe`. If packaging fails in Electron Builder dependency collection, use the full local Node/npm paths above or prepend `C:\Program Files\nodejs` to `PATH` for the build process so Electron Builder can resolve `npm`.
 
@@ -112,8 +124,11 @@ For GitHub work, prefer a branch-and-PR workflow.
 1. Create feature branches with the codex/ prefix unless asked otherwise.
 2. Keep commits focused.
 3. Do not bypass protected main.
-4. Push branches and open draft PRs when work is ready for automated validation.
-5. After merge, sync local main before continuing.
+4. Push branches and open ready-for-review PRs when work is ready for automated validation so repository auto-merge can run after checks pass.
+5. Use draft PRs only when the user explicitly asks for a draft or when the branch is intentionally incomplete and should not auto-merge.
+6. After merge, sync local main before continuing.
+
+For releases, update `package.json` to the new version, merge the release-ready PR to `main`, then push a matching `vX.Y.Z` tag from `main`. The `Release` GitHub Actions workflow builds and uploads the Windows portable executable for `v*` tags.
 
 For this personal repo, keep review requirements lightweight unless asked otherwise.
 

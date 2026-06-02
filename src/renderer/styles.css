@@ -41,9 +41,10 @@ body {
 
 .app-shell {
   min-height: 100vh;
-  padding: 16px 16px 68px;
+  overflow: hidden;
+  padding: 14px 16px 62px;
   display: grid;
-  gap: 12px;
+  gap: 10px;
   grid-template-rows: auto auto auto;
 }
 
@@ -61,7 +62,7 @@ body {
 .toolbar {
   grid-template-columns: 1fr auto;
   align-items: center;
-  min-height: 82px;
+  min-height: 76px;
 }
 
 h1 {
@@ -81,7 +82,7 @@ p {
 }
 
 .controls.settings-grid {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .controls.stacked {
@@ -179,7 +180,7 @@ button:disabled {
   grid-template-columns: auto 1fr auto;
   align-items: center;
   gap: 12px;
-  padding: 12px 18px;
+  padding: 10px 18px;
   border-top: 1px solid var(--surface);
   background: var(--bg);
 }
@@ -213,7 +214,26 @@ button:disabled {
 }
 
 #calibrationStatus {
-  white-space: pre-line;
+  display: grid;
+  gap: 5px;
+  margin-top: 6px;
+}
+
+.calibration-status-item {
+  display: grid;
+  gap: 1px;
+}
+
+.calibration-status-label {
+  color: var(--text);
+  font-size: 12px;
+}
+
+.calibration-status-value {
+  color: var(--muted);
+  font-family: Consolas, "Cascadia Mono", monospace;
+  font-size: 12px;
+  white-space: nowrap;
 }
 
 .summary-strip {
@@ -313,8 +333,10 @@ button:disabled {
 
 .percentile-values {
   display: inline-flex;
+  align-items: center;
   justify-content: flex-end;
-  gap: 4px;
+  gap: 6px;
+  line-height: 1;
 }
 
 .support-performance {
@@ -375,15 +397,19 @@ button:disabled {
 .log-detail-row .popover-percentiles {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
+  line-height: 1;
 }
 
 .support-percentile-divider {
-  width: 1px;
-  height: 12px;
-  margin: 0 3px;
+  display: inline-block;
+  flex: none;
+  width: 2px;
+  height: 16px;
+  margin: 0 2px;
   background: var(--muted);
   opacity: 0.85;
+  transform: translateY(1px);
 }
 
 .performance-separator {

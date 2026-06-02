@@ -36,10 +36,13 @@ export async function summarizeLobbyCharacters(options: LobbySummaryOptions): Pr
     characterNames.map(async (name) => {
       try {
         const result = await fetchEncounterAwareLogs(options.logProvider, options.region, name, encounter, options.pages);
-        const flags: SummaryFlag[] = result.resolvedFromSearch ? ["ocr-search-corrected"] : [];
-        return withFlags(summarizeCharacter(result.name, result.logs, encounter), flags);
+        const flags: SummaryFlag[] = [
+          ...(result.resolvedFromSearch ? (["ocr-search-corrected"] as const) : []),
+          ...(!result.logsEnabled ? (["no-public-logs"] as const) : [])
+        ];
+        return withFlags(summarizeCharacter(result.name, result.logs, encounter, result.header), flags);
       } catch (error) {
-        return withFlags(summarizeCharacter(name, [], encounter), ["scrape-failed"], error);
+        return withFlags(summarizeCharacter(name, [], encounter), flagsForError(error), error);
       }
     })
   );
@@ -124,4 +127,11 @@ function withFlags(summary: CharacterSummary, flags: SummaryFlag[], error?: unkn
     flags: [...new Set([...summary.flags, ...flags])],
     errorMessage: error instanceof Error ? error.message : error ? String(error) : undefined
   };
+}
+
+function flagsForError(error: unknown): SummaryFlag[] {
+  const code = typeof error === "object" && error && "code" in error ? String((error as { code?: unknown }).code) : "";
+  if (code === "not_found") return ["character-not-found"];
+  if (code === "private_logs") return ["no-public-logs"];
+  return ["scrape-failed"];
 }

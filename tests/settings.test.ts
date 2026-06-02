@@ -14,6 +14,13 @@ describe("validateSettings", () => {
     });
   });
 
+  it("accepts captured bare hotkeys", () => {
+    expect(validateSettings({ scanHotkey: " f8 " })).toEqual({
+      ...defaultSettings,
+      scanHotkey: "F8"
+    });
+  });
+
   it("maps legacy regions back to NA", () => {
     expect(validateSettings({ server: "NAW" }).server).toBe("NA");
     expect(validateSettings({ server: "NAE" }).server).toBe("NA");

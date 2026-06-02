@@ -55,6 +55,42 @@ describe("summarizeCharacter", () => {
     expect(summary.selectedLog?.id).toBe("latest");
   });
 
+  it("uses selected display log combat power in the summary", () => {
+    const summary = summarizeCharacter(
+      "Pepegami",
+      [
+        log({ id: "selected", combatPower: 5216.7099609375, timestamp: 20 }),
+        log({ id: "newer-other", boss: "Other Boss", combatPower: 6000, timestamp: 30 })
+      ],
+      ["Armoche, Sentinel of the Abyss"]
+    );
+
+    expect(summary.selectedLog?.id).toBe("selected");
+    expect(summary.combatPower).toBe(5216.7099609375);
+  });
+
+  it("falls back to latest log combat power when there is no selected log", () => {
+    const summary = summarizeCharacter("Pepegami", [log({ id: "latest", combatPower: 6000, timestamp: 30 })], []);
+
+    expect(summary.selectedLog?.id).toBe("latest");
+    expect(summary.combatPower).toBe(6000);
+  });
+
+  it("uses header metadata when no logs are available", () => {
+    const summary = summarizeCharacter("Privatebard", [], ["Armoche, Sentinel of the Abyss"], {
+      id: 1,
+      serial: "serial",
+      rosterId: 2,
+      classKey: "bard",
+      className: "Bard",
+      itemLevel: 1700.5
+    });
+
+    expect(summary.className).toBe("Bard");
+    expect(summary.gearScore).toBe(1700.5);
+    expect(summary.flags).toContain("no-public-logs");
+  });
+
   it("filters current encounter logs by detected difficulty", () => {
     const summary = summarizeCharacter(
       "Pepegami",
