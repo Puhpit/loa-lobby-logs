@@ -32,7 +32,7 @@ import { createDiagnosticsLogger, errorMessage, type DiagnosticsLogger } from ".
 import { normalizeHotkey } from "./hotkey.js";
 import { getEncounterTextFromScreenshot, ScreenshotCharacterSource } from "./ocrCharacterSource.js";
 import { reviewLobby } from "./appPipeline.js";
-import { overlayBounds } from "./overlayWindow.js";
+import { overlayBounds, overlayProgressHeight, overlayResultHeight } from "./overlayWindow.js";
 import { defaultSettings, loadSettings, saveSettings } from "./settings.js";
 import type { CalibrationConfig, CalibrationTarget, SavedCalibrationConfig } from "./calibration.js";
 import type { AppSettings, ReviewLobbyInput, ScanProgress, ScanProgressStage, ScanResult } from "../shared/appTypes.js";
@@ -229,8 +229,8 @@ async function showSettingsWindow(): Promise<void> {
   }
 
   settingsWindow = new BrowserWindow({
-    width: 660,
-    height: 440,
+    width: 760,
+    height: 460,
     minWidth: 560,
     minHeight: 400,
     title: "LOA Lobby Logs Settings",
@@ -275,20 +275,20 @@ async function showSettingsWindow(): Promise<void> {
   settingsWindow.show();
 }
 
-async function ensureOverlayWindow(): Promise<BrowserWindow> {
+async function ensureOverlayWindow(height?: number): Promise<BrowserWindow> {
   const primaryDisplay = screen.getPrimaryDisplay();
-  const bounds = overlayBounds(primaryDisplay.workArea, currentSettings.overlayPosition);
-  const { width, height, x, y } = bounds;
+  const bounds = overlayBounds(primaryDisplay.workArea, currentSettings.overlayPosition, height);
+  const { width, height: boundsHeight, x, y } = bounds;
 
   if (!overlayWindow || overlayWindow.isDestroyed()) {
-    logger?.info("overlay.create", { width, height, x, y });
+    logger?.info("overlay.create", { width, height: boundsHeight, x, y });
     overlayWindow = new BrowserWindow({
       width,
-      height,
+      height: boundsHeight,
       x,
       y,
       minWidth: 640,
-      minHeight: 320,
+      minHeight: 96,
       title: "LOA Lobby Logs",
       icon: createTrayIcon(),
       frame: false,
@@ -314,14 +314,14 @@ async function ensureOverlayWindow(): Promise<BrowserWindow> {
     logger?.info("overlay.loadFile.done");
   }
 
-  overlayWindow.setBounds({ width, height, x, y });
+  overlayWindow.setBounds({ width, height: boundsHeight, x, y });
   overlayWindow.setAlwaysOnTop(true, "screen-saver");
   overlayWindow.show();
   return overlayWindow;
 }
 
 async function showOverlayWindow(result: ScanResult): Promise<void> {
-  const window = await ensureOverlayWindow();
+  const window = await ensureOverlayWindow(overlayResultHeight(result.summaries.length, result.warnings.length));
   logger?.info("overlay.show", {
     candidateCount: result.candidates.length,
     summaryCount: result.summaries.length,
@@ -336,7 +336,7 @@ async function showOverlayWindow(result: ScanResult): Promise<void> {
 }
 
 async function showOverlayProgress(progress: ScanProgress): Promise<void> {
-  const window = await ensureOverlayWindow();
+  const window = await ensureOverlayWindow(overlayProgressHeight(progress.stage));
   logger?.info("scan.progress", { ...progress });
   window.webContents.send("scan-progress-updated", progress);
 }

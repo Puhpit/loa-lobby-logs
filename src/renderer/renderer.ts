@@ -168,9 +168,10 @@ function initOverlay(env: RendererEnvironment, api: AppApi): void {
 }
 
 export function renderOverlayResult(documentObj: Document, api: AppApi, result: ScanResult): void {
+  setOverlayResultsVisible(documentObj, true);
   hideOverlayProgress(documentObj);
   renderSummary(result, byId(documentObj, "overlayEncounter"), byId(documentObj, "overlayDetected"), byId(documentObj, "overlayUpdated"));
-  byId(documentObj, "overlayStatus").textContent = (result.encounter.groupName ?? result.encounter.visibleText) || "Unknown encounter";
+  byId(documentObj, "overlayStatus").textContent = "";
   renderWarnings(documentObj, result);
   renderRows(documentObj, result.summaries, result.encounter, byId(documentObj, "overlayResults"));
   void reportRendererEvent(api, "overlay.result.rendered", {
@@ -184,11 +185,13 @@ function renderOverlayProgress(documentObj: Document, progress: ScanProgress): v
   if (progress.stage === "capturing" && progress.message.toLowerCase().includes("preparing")) {
     clearOverlayView(documentObj, "Scanning...");
   }
+  setOverlayResultsVisible(documentObj, false);
   const progressEl = byId(documentObj, "overlayProgress");
   const titleEl = byId(documentObj, "overlayProgressTitle");
   const messageEl = byId(documentObj, "overlayProgressMessage");
   const settingsButton = byId<HTMLButtonElement>(documentObj, "openSettingsFromOverlay");
-  progressEl.hidden = false;
+  byId(documentObj, "overlayStatus").textContent = progress.message;
+  progressEl.hidden = progress.stage !== "needs-calibration";
   titleEl.textContent = progress.stage === "needs-calibration"
     ? "Calibration Required"
     : progress.stage === "error"
@@ -204,6 +207,7 @@ function renderOverlayProgress(documentObj: Document, progress: ScanProgress): v
 function clearOverlayView(documentObj: Document, status = "No results yet"): void {
   hideLogPopover(documentObj);
   hideOverlayProgress(documentObj);
+  setOverlayResultsVisible(documentObj, true);
   byId(documentObj, "overlayWarnings").replaceChildren();
   byId(documentObj, "overlayWarnings").hidden = true;
   byId(documentObj, "overlayResults").replaceChildren();
@@ -216,6 +220,11 @@ function clearOverlayView(documentObj: Document, status = "No results yet"): voi
 function hideOverlayProgress(documentObj: Document): void {
   byId(documentObj, "overlayProgress").hidden = true;
   byId<HTMLButtonElement>(documentObj, "openSettingsFromOverlay").hidden = true;
+}
+
+function setOverlayResultsVisible(documentObj: Document, visible: boolean): void {
+  byId(documentObj, "overlaySummary").hidden = !visible;
+  byId(documentObj, "overlayResultsFrame").hidden = !visible;
 }
 
 function renderSummary(
@@ -279,9 +288,13 @@ function renderRows(
         .filter(Boolean)
         .join(" | ");
       row.querySelector(".encounter-tag")!.textContent = summary.selectedLog
-        ? [summary.selectedLog.difficulty, gateForBoss(summary.selectedLog.boss), summary.selectedLog.boss].filter(Boolean).join(" | ")
+        ? encounterTagText(summary)
         : "";
-      row.querySelector(".lookup-message")!.textContent = friendlyLookupMessage(summary, encounter);
+      row.querySelector(".encounter-tag")!.className = ["encounter-tag", summary.flags.includes("no-encounter-match") && summary.selectedLog ? "fallback-log" : ""].filter(Boolean).join(" ");
+      const lookup = friendlyLookupMessage(summary, encounter);
+      const lookupEl = row.querySelector(".lookup-message")!;
+      lookupEl.textContent = lookup.text;
+      lookupEl.className = ["lookup-message", lookup.className].filter(Boolean).join(" ");
       row.addEventListener("pointerenter", () => showLogPopover(documentObj, row, summary));
       row.addEventListener("focusin", () => showLogPopover(documentObj, row, summary));
       row.addEventListener("pointerleave", () => hideLogPopover(documentObj));
@@ -293,6 +306,12 @@ function renderRows(
 
 function metric(label: string, value: string): string {
   return `<div class="metric"><span>${label}</span><strong>${value}</strong></div>`;
+}
+
+function encounterTagText(summary: ScanResult["summaries"][number]): string {
+  if (!summary.selectedLog) return "";
+  const text = [summary.selectedLog.difficulty, gateForBoss(summary.selectedLog.boss), summary.selectedLog.boss].filter(Boolean).join(" | ");
+  return summary.flags.includes("no-encounter-match") ? `⚠ ${text}` : text;
 }
 
 function initCalibration(env: RendererEnvironment, api: AppApi): void {
@@ -665,27 +684,30 @@ function percentileTextColor(value: number): string {
   return "#afafaf";
 }
 
-function friendlyLookupMessage(summary: ScanResult["summaries"][number], encounter: ScanResult["encounter"]): string {
+function friendlyLookupMessage(
+  summary: ScanResult["summaries"][number],
+  encounter: ScanResult["encounter"]
+): { text: string; className?: string } {
   if (summary.flags.includes("no-encounter-match") && summary.selectedLog) {
-    return "No matching encounter logs; showing latest public log";
+    return { text: "" };
   }
-  if (summary.selectedLog) return "";
+  if (summary.selectedLog) return { text: "" };
   if (
     summary.flags.includes("character-not-found") ||
     summary.errorMessage?.toLowerCase().includes("not found")
   ) {
-    return `Character ${summary.name} was not found`;
+    return { text: `Character ${summary.name} was not found`, className: "character-not-found" };
   }
   if (
     (summary.flags.includes("no-public-logs") && !summary.flags.includes("scrape-failed")) ||
     summary.errorMessage?.toLowerCase().includes("does not have public")
   ) {
-    return `Character ${summary.name} does not have public logs`;
+    return { text: `Character ${summary.name} does not have public logs`, className: "no-public-logs" };
   }
   if (summary.errorMessage || summary.flags.includes("scrape-failed")) {
-    return `Could not load logs for ${summary.name}`;
+    return { text: `Could not load logs for ${summary.name}`, className: "load-failed" };
   }
-  return "";
+  return { text: "" };
 }
 
 function formatNumber(value: number | null | undefined): string {
