@@ -3,5 +3,5 @@ declare module "tesseract.js" {
     imagePath: string,
     language?: string,
     options?: Record<string, unknown>
-  ): Promise<{ data: { text: string; confidence: number } }>;
+  ): Promise<{ data: { text: string; confidence: number; words?: unknown[] } }>;
 }

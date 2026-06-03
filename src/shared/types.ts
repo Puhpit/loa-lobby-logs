@@ -15,6 +15,8 @@ export interface CharacterCandidate {
   confidence: number;
   sourceMode: OcrSourceMode;
   cropRect: Rect;
+  textRole?: "name" | "server" | "placeholder" | "ui" | "unknown";
+  rejectedReason?: "server-like" | "placeholder" | "low-confidence" | "ui-token" | "invalid-name-shape";
 }
 
 export interface CharacterHeader {

@@ -30,12 +30,13 @@ export async function reviewLobby(input: ReviewLobbyInput, options: AppPipelineO
   });
 
   const candidates = input.ocrCandidates ?? (input.useScreenshotOcr && input.screenshotPath
-    ? await new ScreenshotCharacterSource({
+      ? await new ScreenshotCharacterSource({
         imagePath: input.screenshotPath,
         calibration: requiredCalibration(options.calibration),
         sourceMode: "character-list",
         logger: options.logger,
-        scanId: options.scanId
+        scanId: options.scanId,
+        debugOutputDir: join(process.cwd(), "local", "debug-ocr")
       }).getVisibleApplicants()
     : []);
 

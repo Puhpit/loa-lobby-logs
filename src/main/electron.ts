@@ -618,7 +618,14 @@ async function sourceForDisplay(display: Display): Promise<Electron.DesktopCaptu
 
 async function scanRightSideCandidates(imagePath: string, calibration: CalibrationConfig, scanId: string): Promise<CharacterCandidate[]> {
   const candidates = dedupeCandidatesInScreenOrder(
-    await new ScreenshotCharacterSource({ imagePath, calibration, sourceMode: "character-list", logger, scanId }).getVisibleApplicants()
+    await new ScreenshotCharacterSource({
+      imagePath,
+      calibration,
+      sourceMode: "character-list",
+      logger,
+      scanId,
+      debugOutputDir: join(process.cwd(), "local", "debug-ocr")
+    }).getVisibleApplicants()
   );
   logger?.info("ocr.characters.done", {
     scanId,
