@@ -137,11 +137,14 @@ const overlayIds = [
   "calibrationView",
   "overlayView",
   "dismissOverlay",
+  "overlaySummary",
   "overlayEncounter",
   "overlayDetected",
   "overlayUpdated",
   "overlayStatus",
   "overlayWarnings",
+  "overlayResultsFrame",
+  "overlayResultsHeader",
   "overlayResults",
   "overlayLogPopover",
   "overlayProgress",
@@ -197,7 +200,7 @@ describe("renderer boot", () => {
     expect(api.events).toContainEqual({ event: "button.click", data: { action: "overlay.dismiss" } });
     expect(api.dismissOverlayCalls).toBe(1);
     expect(document.getElementById("overlayDetected")!.textContent).toBe("1");
-    expect(document.getElementById("overlayStatus")!.textContent).toBe("Dark Baratron");
+    expect(document.getElementById("overlayStatus")!.textContent).toBe("");
     expect(document.getElementById("overlayResults")!.children).toHaveLength(1);
     const row = document.getElementById("overlayResults")!.children[0];
     expect(row.querySelector(".name")?.textContent).toBe("Pepegami");
@@ -228,7 +231,7 @@ describe("renderer boot", () => {
     api.emitScanProgress({ stage: "capturing", message: "Preparing scan..." });
     expect(document.getElementById("overlayResults")!.children).toHaveLength(0);
     expect(document.getElementById("overlayDetected")!.textContent).toBe("0");
-    expect(document.getElementById("overlayStatus")!.textContent).toBe("Scanning...");
+    expect(document.getElementById("overlayStatus")!.textContent).toBe("Preparing scan...");
 
     api.emitScanResult(scanResult());
     await document.getElementById("dismissOverlay")!.trigger("click");
@@ -300,6 +303,7 @@ describe("renderer boot", () => {
     expect(html).toContain("performance-separator");
     expect(html).not.toContain("support-percentile-separator");
     expect(html).not.toContain("percentile-badge");
+    expect(document.getElementById("overlayResults")!.children[0].innerHTML).toContain("support-percentile-divider");
   });
 
   it("renders friendly scrape failure messages without raw flags", async () => {
@@ -315,6 +319,7 @@ describe("renderer boot", () => {
     const row = document.getElementById("overlayResults")!.children[0];
 
     expect(row.querySelector(".lookup-message")?.textContent).toBe("Could not load logs for Pepegami");
+    expect(row.querySelector(".lookup-message")?.className).toContain("load-failed");
     expect(row.innerHTML).not.toContain("no-public-logs");
     expect(row.innerHTML).not.toContain("scrape-failed");
   });
@@ -341,8 +346,9 @@ describe("renderer boot", () => {
     }));
     const row = document.getElementById("overlayResults")!.children[0];
 
-    expect(row.querySelector(".encounter-tag")?.textContent).toBe("Hard | G2 | Corvus Tul Rak");
-    expect(row.querySelector(".lookup-message")?.textContent).toBe("No matching encounter logs; showing latest public log");
+    expect(row.querySelector(".encounter-tag")?.textContent).toBe("⚠ Hard | G2 | Corvus Tul Rak");
+    expect(row.querySelector(".encounter-tag")?.className).toContain("fallback-log");
+    expect(row.querySelector(".lookup-message")?.textContent).toBe("");
   });
 
   it("wires settings buttons to their expected APIs", async () => {
@@ -421,14 +427,17 @@ describe("renderer boot", () => {
     let row = document.getElementById("overlayResults")!.children[0];
     expect(row.querySelector(".meta")?.textContent).toContain("ilvl 1765.33 | CP 5,216.71");
     expect(row.querySelector(".lookup-message")?.textContent).toBe("Character Pepegami does not have public logs");
+    expect(row.querySelector(".lookup-message")?.className).toContain("no-public-logs");
 
     api.emitScanResult(scanResult({ selectedLog: false, flags: ["character-not-found"] }));
     row = document.getElementById("overlayResults")!.children[0];
     expect(row.querySelector(".lookup-message")?.textContent).toBe("Character Pepegami was not found");
+    expect(row.querySelector(".lookup-message")?.className).toContain("character-not-found");
 
     api.emitScanResult(scanResult({ selectedLog: false, flags: ["no-public-logs", "scrape-failed"] }));
     row = document.getElementById("overlayResults")!.children[0];
     expect(row.querySelector(".lookup-message")?.textContent).toBe("Could not load logs for Pepegami");
+    expect(row.querySelector(".lookup-message")?.className).toContain("load-failed");
   });
 
   it("renders missing calibration as unset coordinates", async () => {
@@ -471,6 +480,7 @@ describe("renderer boot", () => {
     expect(document.getElementById("overlayProgress")!.hidden).toBe(false);
     expect(document.getElementById("overlayProgressTitle")!.textContent).toBe("Calibration Required");
     expect(document.getElementById("overlayProgressMessage")!.textContent).toBe("Calibration is not set.");
+    expect(document.getElementById("overlayStatus")!.textContent).toBe("Calibration is not set.");
     expect(document.getElementById("openSettingsFromOverlay")!.hidden).toBe(false);
     expect(api.openSettingsCalls).toBe(1);
   });

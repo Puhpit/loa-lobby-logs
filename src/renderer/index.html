@@ -8,47 +8,50 @@
   </head>
   <body>
     <main id="settingsView" class="app-shell">
-      <section class="toolbar">
-        <div>
-          <h1>LOA Lobby Logs</h1>
-          <p id="status">Ready</p>
-        </div>
-        <button id="scanNow" class="primary">Scan Now</button>
-      </section>
-
-      <section class="controls settings-grid">
-        <label>
-          Server
-          <select id="server">
-            <option value="NA">NA</option>
-            <option value="CE">CE</option>
-          </select>
-        </label>
-        <label>
-          Hotkey
-          <input id="scanHotkey" value="Ctrl+Alt+D" />
-        </label>
-        <label>
-          Overlay
-          <select id="overlayPosition">
-            <option value="left">Left</option>
-            <option value="right">Right</option>
-          </select>
-        </label>
-      </section>
-
-      <section class="controls stacked">
-        <div class="calibration-panel">
+      <div class="settings-body">
+        <section class="scan-card">
           <div>
-            <strong>Calibration</strong>
+            <strong>Scan</strong>
+            <p id="status">Ready</p>
+          </div>
+          <button id="scanNow" class="primary scan-action">Scan Now</button>
+        </section>
+
+        <section class="settings-section configuration-section">
+          <div class="section-title">Configuration</div>
+          <div class="scan-grid">
+            <label class="field">
+              Server
+              <select id="server">
+                <option value="NA">NA</option>
+                <option value="CE">CE</option>
+              </select>
+            </label>
+            <label class="field">
+              Hotkey
+              <input id="scanHotkey" value="Ctrl+Alt+D" />
+            </label>
+            <label class="field">
+              Overlay
+              <select id="overlayPosition">
+                <option value="left">Left</option>
+                <option value="right">Right</option>
+              </select>
+            </label>
+          </div>
+        </section>
+
+        <section class="settings-section calibration-section">
+          <div class="section-title">Calibration</div>
+          <div class="calibration-grid">
             <p id="calibrationStatus">Calibration not set</p>
+            <div class="calibration-buttons">
+              <button id="calibrateEncounterTitle">Calibrate Encounter</button>
+              <button id="calibrateCharacterList">Calibrate Characters</button>
+            </div>
           </div>
-          <div class="calibration-buttons">
-            <button id="calibrateEncounterTitle">Calibrate Encounter Title</button>
-            <button id="calibrateCharacterList">Calibrate Character List</button>
-          </div>
-        </div>
-      </section>
+        </section>
+      </div>
 
       <section class="settings-footer">
         <button id="openLogs" class="link-button">Open App Logs</button>
@@ -59,22 +62,22 @@
 
     <main id="overlayView" class="overlay-shell" hidden>
       <header class="overlay-header">
-        <div>
+        <div class="title-block">
           <h1>LOA Lobby Logs</h1>
           <p id="overlayStatus">No results yet</p>
         </div>
         <button id="dismissOverlay" class="icon-button" title="Dismiss">x</button>
       </header>
-      <section class="summary-strip overlay-summary">
-        <div>
+      <section id="overlaySummary" class="summary-strip overlay-summary">
+        <div class="summary-main">
           <span>Encounter</span>
           <strong id="overlayEncounter">Unknown</strong>
         </div>
-        <div>
+        <div class="summary-count">
           <span>Detected</span>
           <strong id="overlayDetected">0</strong>
         </div>
-        <div>
+        <div class="summary-time">
           <span>Updated</span>
           <strong id="overlayUpdated">Never</strong>
         </div>
@@ -85,7 +88,15 @@
         <button id="openSettingsFromOverlay" class="primary" hidden>Open Settings</button>
       </section>
       <section id="overlayWarnings" class="warnings"></section>
-      <section id="overlayResults" class="results overlay-results"></section>
+      <section id="overlayResultsFrame" class="results-frame">
+        <div id="overlayResultsHeader" class="results-header" aria-hidden="true">
+          <span>Character</span>
+          <span>Percentile</span>
+          <span>Performance</span>
+          <span>nDPS/rDPS</span>
+        </div>
+        <div id="overlayResults" class="results overlay-results"></div>
+      </section>
       <section id="overlayLogPopover" class="log-popover" hidden></section>
     </main>
 
