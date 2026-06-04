@@ -92,6 +92,17 @@ describe("resolveEncounter", () => {
     expect(resolveEncounter("Party 1 [Nightmare] Sanctum random Frost Recruiting Raid Group").groupName).toBe("Serca");
   });
 
+  it("fuzzy matches known encounter aliases with OCR substitutions", () => {
+    expect(resolveEncounter("[Hard] Fortess of Destructlon")).toEqual({
+      visibleText: "[Hard] Fortress Of Destruction",
+      groupName: "Armoche",
+      difficulty: "Hard",
+      bosses: ["Brelshaza, Ember in the Ashes", "Armoche, Sentinel of the Abyss"]
+    });
+    expect(resolveEncounter("[Normal] F0rtress Destructicn").groupName).toBe("Armoche");
+    expect(resolveEncounter("[Nightmare] Sanclum Fr0st").groupName).toBe("Serca");
+  });
+
   it("leaves tied encounter alias matches unresolved", () => {
     expect(resolveEncounter("Final Sanctum Day Frost")).toEqual({
       visibleText: "Final Sanctum Day Frost",
