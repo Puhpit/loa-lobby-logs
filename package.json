@@ -1,6 +1,6 @@
 {
   "name": "loa-lobby-logs",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "Personal Lost Ark lobby log overlay.",
   "type": "module",
@@ -44,6 +44,7 @@
     "vitest": "^3.0.0"
   },
   "dependencies": {
+    "sharp": "^0.34.5",
     "tesseract.js": "^6.0.0"
   }
 }

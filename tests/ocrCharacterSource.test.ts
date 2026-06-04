@@ -5,6 +5,8 @@ import {
   candidatesFromOcrText,
   detectCardsFromOcr,
   detectLayoutCards,
+  detectVisualLayoutFromPixels,
+  detectVisualCardsFromPixels,
   getEncounterTextFromScreenshot
 } from "../src/main/ocrCharacterSource.js";
 import { dedupeCharacterCandidates, isServerLikeToken, normalizeOcrName, normalizeOcrNames } from "../src/main/nameNormalization.js";
@@ -41,6 +43,22 @@ describe("dedupeCharacterCandidates", () => {
       "badseedrestart:0.9",
       "Pepegami:0.8"
     ]);
+  });
+
+  it("drops near-duplicate OCR variants after keeping the better candidate", () => {
+    const candidates: CharacterCandidate[] = [
+      candidate("Evildoercm", 0.9),
+      candidate("Evidoercm", 0.7),
+      candidate("Kingdrogo", 0.6),
+      candidate("DKingdrégo", 0.95),
+      candidate("Pepegami", 0.7)
+    ];
+
+    expect(dedupeCharacterCandidates(candidates).map((value) => value.normalizedName).sort()).toEqual([
+      "Evildoercm",
+      "Kingdrogo",
+      "Pepegami"
+    ].sort());
   });
 });
 
@@ -191,6 +209,69 @@ describe("getEncounterTextFromScreenshot", () => {
 });
 
 describe("detectCardsFromOcr", () => {
+  it("splits bright name/icon clusters into visual card regions", () => {
+    const width = 220;
+    const height = 120;
+    const data = Buffer.alloc(width * height * 3, 24);
+    drawBrightRect(data, width, 18, 18, 12, 12);
+    drawBrightRect(data, width, 36, 20, 64, 8);
+    drawBrightRect(data, width, 128, 18, 12, 12);
+    drawBrightRect(data, width, 148, 20, 58, 8);
+    drawBrightRect(data, width, 18, 70, 12, 12);
+    drawBrightRect(data, width, 36, 72, 72, 8);
+
+    const cards = detectVisualCardsFromPixels(data, width, height, { x: 1000, y: 200, width, height });
+
+    expect(cards).toHaveLength(3);
+    expect(cards[0].iconRect).toBeDefined();
+    expect(cards[0].nameRect.x).toBeGreaterThan(cards[0].iconRect!.x);
+    expect(cards.some((card) => card.nameRect.x > 1130)).toBe(true);
+  });
+
+  it("classifies and splits two-lane member grids with icon before name", () => {
+    const width = 780;
+    const height = 470;
+    const data = Buffer.alloc(width * height * 3, 18);
+    for (const laneX of [0, 390]) {
+      for (const y of [72, 108, 144, 180]) {
+        drawBrightRect(data, width, laneX + 18, y + 2, 8, 10);
+        drawBrightRect(data, width, laneX + 42, y, 24, 24);
+        drawBrightRect(data, width, laneX + 72, y + 4, 94, 10);
+      }
+    }
+
+    expect(detectVisualLayoutFromPixels(data, width, height)).toBe("member-grid");
+    const cards = detectVisualCardsFromPixels(data, width, height, { x: 2000, y: 300, width, height });
+
+    expect(cards.length).toBeGreaterThanOrEqual(8);
+    expect(cards[0].layoutType).toBe("member-grid");
+    expect(cards[0].iconRect!.x).toBeLessThan(cards[0].nameRect.x);
+    expect(cards[0].iconRect!.width).toBeGreaterThanOrEqual(26);
+  });
+
+  it("splits lobby overview lanes without merging left and right text", () => {
+    const width = 780;
+    const height = 470;
+    const data = Buffer.alloc(width * height * 3, 18);
+    for (const y of [234, 286, 338, 390]) {
+      drawBrightRect(data, width, 40, y + 2, 24, 24);
+      drawBrightRect(data, width, 78, y + 10, 116, 9);
+    }
+    drawBrightRect(data, width, 438, 338 + 2, 24, 24);
+    drawBrightRect(data, width, 476, 338 + 10, 128, 9);
+    drawBrightRect(data, width, 438, 390 + 2, 24, 24);
+    drawBrightRect(data, width, 476, 390 + 10, 128, 9);
+
+    expect(detectVisualLayoutFromPixels(data, width, height)).toBe("lobby-overview");
+    const cards = detectVisualCardsFromPixels(data, width, height, { x: 2000, y: 300, width, height });
+
+    expect(cards.length).toBeGreaterThanOrEqual(4);
+    expect(cards.every((card) => card.layoutType === "lobby-overview")).toBe(true);
+    expect(cards.some((card) => card.nameRect.x > 2400)).toBe(true);
+    expect(cards.every((card) => card.nameRect.width < 220)).toBe(true);
+    expect(cards[0].iconRect!.x).toBeLessThan(cards[0].nameRect.x);
+  });
+
   it("generates one-zone layout card crops for roster and applicant patterns", () => {
     const cards = detectLayoutCards({ x: 1000, y: 100, width: 500, height: 470 });
 
@@ -219,6 +300,17 @@ describe("detectCardsFromOcr", () => {
     });
   });
 });
+
+function drawBrightRect(data: Buffer, width: number, x: number, y: number, rectWidth: number, rectHeight: number): void {
+  for (let row = y; row < y + rectHeight; row += 1) {
+    for (let col = x; col < x + rectWidth; col += 1) {
+      const offset = (row * width + col) * 3;
+      data[offset] = 220;
+      data[offset + 1] = 220;
+      data[offset + 2] = 220;
+    }
+  }
+}
 
 function candidate(normalizedName: string, confidence: number): CharacterCandidate {
   return {

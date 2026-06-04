@@ -25,6 +25,9 @@ export interface CharacterHeader {
   rosterId: number;
   classKey: string;
   className: string;
+  classId?: number;
+  classIconUrl?: string;
+  classMappingWarning?: string;
   itemLevel?: number;
   world?: string;
 }
@@ -93,6 +96,9 @@ export interface CharacterLogsQueryOptions {
 export interface CharacterSummary {
   name: string;
   className?: string;
+  classId?: number;
+  classIconUrl?: string;
+  classMappingWarning?: string;
   spec?: string;
   gearScore?: number;
   combatPower?: number;

@@ -12,6 +12,7 @@ Current stack:
 - Node 24
 - Vitest
 - Tesseract.js OCR
+- Sharp image processing for OCR crop preparation and card/region detection
 - JSON file cache under Electron `userData`
 - Electron Builder Windows portable packaging
 
@@ -21,6 +22,7 @@ Current runtime architecture:
 - `src/main/preload.cts` builds to CommonJS `dist/src/main/preload.cjs`; Electron windows must load this `.cjs` preload so `window.loaLobbyLogs` is exposed.
 - `src/renderer/renderer.ts` is one renderer bundle with `?view=settings` and `?view=overlay` modes. It guards missing preload with a visible fatal message and logs renderer boot/click/render events.
 - `src/main/appPipeline.ts` combines OCR/manual candidates, encounter text, lostark.bible fetching, cache, rate limiting, and summaries.
+- `src/main/ocrCharacterSource.ts` treats Character List calibration as one persistent search zone and uses Sharp-backed visual card/region detection before Tesseract name OCR. Keep local screenshot fixtures and debug overlays under ignored `local/`.
 
 Expected user flow:
 

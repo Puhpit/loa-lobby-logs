@@ -18,11 +18,17 @@ const OCR_UI_DENYLIST = new Set([
   "lobbyhasbeenpu",
   "master",
   "member",
+  "need",
   "party",
+  "rarty",
+  "rartyv",
   "reclear",
   "raid",
+  "rect",
   "rec",
   "recr",
+  "recru",
+  "recrt",
   "recrui",
   "recruit",
   "recruiti",
@@ -31,10 +37,12 @@ const OCR_UI_DENYLIST = new Set([
   "reset",
   "selected",
   "send",
+  "seen",
   "settings",
   "supp",
   "support",
   "title",
+  "tree",
   "viewdetails",
   "view"
 ]);
@@ -131,7 +139,7 @@ export function dedupeCharacterCandidates(candidates: CharacterCandidate[]): Cha
     }
   }
 
-  return dropPartialNames([...bestByName.values()].sort((left, right) => right.confidence - left.confidence));
+  return dropNearDuplicateNames(dropPartialNames([...bestByName.values()].sort((left, right) => right.confidence - left.confidence)));
 }
 
 function dropPartialNames(candidates: CharacterCandidate[]): CharacterCandidate[] {
@@ -142,6 +150,43 @@ function dropPartialNames(candidates: CharacterCandidate[]): CharacterCandidate[
       return otherName !== name && otherName.startsWith(name) && otherName.length - name.length >= 2;
     });
   });
+}
+
+function dropNearDuplicateNames(candidates: CharacterCandidate[]): CharacterCandidate[] {
+  const kept: CharacterCandidate[] = [];
+  for (const candidate of candidates) {
+    const key = fuzzyKey(candidate.normalizedName);
+    const duplicateIndex = kept.findIndex((other) => {
+      const otherKey = fuzzyKey(other.normalizedName);
+      if (!key || !otherKey) return false;
+      const minLength = Math.min(key.length, otherKey.length);
+      if (minLength < 5) return false;
+      if (key.includes(otherKey) || otherKey.includes(key)) return Math.abs(key.length - otherKey.length) <= 3;
+      const maxDistance = minLength >= 8 ? 2 : 1;
+      return levenshteinDistance(key, otherKey) <= maxDistance;
+    });
+    if (duplicateIndex === -1) {
+      kept.push(candidate);
+      continue;
+    }
+
+    const other = kept[duplicateIndex];
+    const otherKey = fuzzyKey(other.normalizedName);
+    if (isBetterNearDuplicate(key, otherKey, candidate.confidence, other.confidence)) {
+      kept[duplicateIndex] = candidate;
+    }
+  }
+  return kept;
+}
+
+function isBetterNearDuplicate(candidateKey: string, existingKey: string, candidateConfidence: number, existingConfidence: number): boolean {
+  if (looksLikeLeadingNoiseVariant(existingKey, candidateKey)) return true;
+  if (looksLikeLeadingNoiseVariant(candidateKey, existingKey)) return false;
+  return candidateConfidence > existingConfidence;
+}
+
+function looksLikeLeadingNoiseVariant(longerKey: string, shorterKey: string): boolean {
+  return longerKey.length - shorterKey.length === 1 && levenshteinDistance(longerKey.slice(1), shorterKey) <= 1;
 }
 
 function isPlaceholderToken(value: string): boolean {
