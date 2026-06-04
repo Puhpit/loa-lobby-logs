@@ -1,4 +1,5 @@
 import type { CharacterDisplayMetrics, CharacterHeader, CharacterSummary, LogEntry, PercentileBadge } from "../shared/types.js";
+import { classMetadataForDisplayName } from "./classMap.js";
 
 export interface SummaryEncounterContext {
   bosses: string[];
@@ -28,10 +29,21 @@ export function summarizeCharacter(
     (acc, log) => (!acc || log.timestamp > acc.timestamp ? log : acc),
     undefined
   );
+  const classMetadata = header
+    ? {
+      className: header.className,
+      classId: header.classId,
+      classIconUrl: header.classIconUrl,
+      classMappingWarning: header.classMappingWarning
+    }
+    : classMetadataForDisplayName(latest?.className);
 
   return {
     name,
-    className: latest?.className ?? header?.className,
+    className: latest?.className ?? classMetadata.className,
+    classId: classMetadata.classId,
+    classIconUrl: classMetadata.classIconUrl,
+    classMappingWarning: classMetadata.classMappingWarning,
     spec: latest?.spec,
     gearScore: latest?.gearScore ?? header?.itemLevel,
     combatPower: selectedLog?.combatPower ?? latest?.combatPower,

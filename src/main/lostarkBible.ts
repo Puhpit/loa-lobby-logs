@@ -1,4 +1,4 @@
-import { lostArkBibleClassNames } from "./classMap.js";
+import { classMetadataForLostArkBibleKey } from "./classMap.js";
 import type {
   CharacterHeader,
   CharacterLogsQueryOptions,
@@ -45,6 +45,10 @@ interface RawPageData {
 export interface SearchCandidate {
   name: string;
   classKey?: string;
+  className?: string;
+  classId?: number;
+  classIconUrl?: string;
+  classMappingWarning?: string;
   itemLevel?: number;
 }
 
@@ -439,12 +443,16 @@ function parseEmbeddedLogs(logsLiteral: string): unknown[] {
 }
 
 function normalizeHeader(header: RawHeader): CharacterHeader {
+  const classMetadata = classMetadataForLostArkBibleKey(header.class);
   return {
     id: header.id,
     serial: header.sn,
     rosterId: header.rid,
     classKey: header.class,
-    className: lostArkBibleClassNames[header.class] ?? header.class,
+    className: classMetadata.className,
+    classId: classMetadata.classId,
+    classIconUrl: classMetadata.classIconUrl,
+    classMappingWarning: classMetadata.classMappingWarning,
     itemLevel: header.ilvl,
     world: header.world
   };
@@ -557,7 +565,7 @@ function collectSearchCandidates(value: unknown): SearchCandidate[] {
       typeof classKey === "string" &&
       typeof itemLevel === "number"
     ) {
-      candidates.push({ name, classKey, itemLevel });
+      candidates.push({ name, classKey, ...classMetadataForLostArkBibleKey(classKey), itemLevel });
     }
   }
 

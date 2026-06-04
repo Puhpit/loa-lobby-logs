@@ -41,7 +41,7 @@ class FakeElement {
     this.html = value;
     this.children.length = 0;
 
-    for (const className of ["identity", "name", "meta", "encounter-tag", "lookup-message", "metric", "empty", "log-detail-row"]) {
+    for (const className of ["identity", "identity-heading", "name", "meta", "encounter-tag", "lookup-message", "metric", "empty", "log-detail-row"]) {
       if (!value.includes(`class="${className}`)) continue;
       const child = new FakeElement("div");
       child.className = className;
@@ -263,6 +263,28 @@ describe("renderer boot", () => {
     expect(document.getElementById("overlayResults")!.children[0].innerHTML).not.toContain("log-detail-row");
   });
 
+  it("renders resolved encounter difficulty in the overlay header", async () => {
+    const document = new FakeDocument(overlayIds);
+    const window = new FakeWindow({ href: "app://index.html?view=overlay", search: "?view=overlay" });
+    const api = createApi();
+    window.loaLobbyLogs = api;
+
+    bootRenderer({ window: window as unknown as Window, document: document as unknown as Document });
+    await flushPromises();
+
+    api.emitScanResult(scanResult({
+      encounter: {
+        visibleText: "[Hard] Final Day",
+        groupName: "Kazeros",
+        difficulty: "Hard",
+        bosses: ["Death Incarnate Kazeros"]
+      }
+    }));
+    await flushPromises();
+
+    expect(document.getElementById("overlayEncounter")!.textContent).toBe("[Hard] Final Day");
+  });
+
   it("renders Archdemon Kazeros as Kazeros G2", async () => {
     const document = new FakeDocument(overlayIds);
     const window = new FakeWindow({ href: "app://index.html?view=overlay", search: "?view=overlay" });
@@ -322,6 +344,24 @@ describe("renderer boot", () => {
     expect(row.querySelector(".lookup-message")?.className).toContain("load-failed");
     expect(row.innerHTML).not.toContain("no-public-logs");
     expect(row.innerHTML).not.toContain("scrape-failed");
+  });
+
+  it("does not render class icons for known class metadata", async () => {
+    const document = new FakeDocument(overlayIds);
+    const window = new FakeWindow({ href: "app://index.html?view=overlay", search: "?view=overlay" });
+    const api = createApi();
+    window.loaLobbyLogs = api;
+
+    bootRenderer({ window: window as unknown as Window, document: document as unknown as Document });
+    await flushPromises();
+
+    api.emitScanResult(scanResult());
+    await flushPromises();
+    const row = document.getElementById("overlayResults")!.children[0];
+
+    expect(row.innerHTML).not.toContain("class=\"class-icon\"");
+    expect(row.innerHTML).not.toContain("classes/205.png");
+    expect(row.querySelector(".meta")?.textContent).toContain("Sorceress");
   });
 
   it("renders a warning when showing fallback logs for a known encounter", async () => {
@@ -640,6 +680,8 @@ function scanResult(options: {
     summaries: [{
       name: "Pepegami",
       className: "Sorceress",
+      classId: 205,
+      classIconUrl: "https://raw.githubusercontent.com/snoww/loa-logs/master/static/images/classes/205.png",
       spec: "Igniter",
       gearScore: 1765.329950546875,
       combatPower: 5216.7099609375,

@@ -233,7 +233,7 @@ function renderSummary(
   candidateCountEl: HTMLElement,
   updatedAtEl: HTMLElement
 ): void {
-  encounterEl.textContent = (output.encounter.groupName ?? output.encounter.visibleText) || "Unknown";
+  encounterEl.textContent = output.encounter.visibleText || output.encounter.groupName || "Unknown";
   candidateCountEl.textContent = String(output.candidates.length);
   updatedAtEl.textContent = new Date(output.generatedAt).toLocaleTimeString();
 }
@@ -268,7 +268,9 @@ function renderRows(
       row.tabIndex = 0;
       row.innerHTML = `
         <div class="identity">
-          <span class="name"></span>
+          <div class="identity-heading">
+            <span class="name"></span>
+          </div>
           <div class="meta"></div>
           <div class="encounter-tag"></div>
           <div class="lookup-message"></div>

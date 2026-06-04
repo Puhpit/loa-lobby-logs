@@ -35,7 +35,8 @@ export async function reviewLobby(input: ReviewLobbyInput, options: AppPipelineO
         calibration: requiredCalibration(options.calibration),
         sourceMode: "character-list",
         logger: options.logger,
-        scanId: options.scanId
+        scanId: options.scanId,
+        debugOutputDir: join(process.cwd(), "local", "debug-ocr")
       }).getVisibleApplicants()
     : []);
 
@@ -59,6 +60,16 @@ export async function reviewLobby(input: ReviewLobbyInput, options: AppPipelineO
     summaries: applyOcrFlags(result.characters, candidates),
     generatedAt: new Date().toISOString()
   };
+  for (const summary of output.summaries) {
+    if (!summary.classMappingWarning) continue;
+    options.logger?.warn("class.mapping.warning", {
+      scanId: options.scanId,
+      characterName: summary.name,
+      className: summary.className,
+      classId: summary.classId,
+      warning: summary.classMappingWarning
+    });
+  }
 
   options.logger?.info("pipeline.review.done", {
     scanId: options.scanId,
@@ -68,6 +79,9 @@ export async function reviewLobby(input: ReviewLobbyInput, options: AppPipelineO
       name: summary.name,
       flags: summary.flags,
       errorMessage: summary.errorMessage,
+      className: summary.className,
+      classId: summary.classId,
+      classMappingWarning: summary.classMappingWarning,
       bestPercentile: summary.bestPercentile,
       bestDps: summary.bestDps,
       medianNdps: summary.medianNdps

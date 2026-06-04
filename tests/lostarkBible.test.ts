@@ -231,7 +231,14 @@ describe("LostArkBibleProvider page extraction", () => {
     expect(decodeSearchResultCandidates({
       type: "result",
       result: JSON.stringify([[1], [2, 3, 4], "Iamboneofmysword", "hawk_eye", 1795])
-    })).toEqual([{ name: "Iamboneofmysword", classKey: "hawk_eye", itemLevel: 1795 }]);
+    })).toEqual([{
+      name: "Iamboneofmysword",
+      classKey: "hawk_eye",
+      className: "Sharpshooter",
+      classId: 502,
+      classIconUrl: "https://raw.githubusercontent.com/snoww/loa-logs/master/static/images/classes/502.png",
+      itemLevel: 1795
+    }]);
   });
 
   it("falls back to search when the direct page header is unparseable", async () => {

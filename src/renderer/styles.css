@@ -404,6 +404,10 @@ button:disabled {
   align-self: start;
 }
 
+.identity-heading {
+  min-width: 0;
+}
+
 .name {
   display: block;
   overflow: hidden;

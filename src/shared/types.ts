@@ -15,6 +15,8 @@ export interface CharacterCandidate {
   confidence: number;
   sourceMode: OcrSourceMode;
   cropRect: Rect;
+  textRole?: "name" | "server" | "placeholder" | "ui" | "unknown";
+  rejectedReason?: "server-like" | "placeholder" | "low-confidence" | "ui-token" | "invalid-name-shape";
 }
 
 export interface CharacterHeader {
@@ -23,6 +25,9 @@ export interface CharacterHeader {
   rosterId: number;
   classKey: string;
   className: string;
+  classId?: number;
+  classIconUrl?: string;
+  classMappingWarning?: string;
   itemLevel?: number;
   world?: string;
 }
@@ -91,6 +96,9 @@ export interface CharacterLogsQueryOptions {
 export interface CharacterSummary {
   name: string;
   className?: string;
+  classId?: number;
+  classIconUrl?: string;
+  classMappingWarning?: string;
   spec?: string;
   gearScore?: number;
   combatPower?: number;
